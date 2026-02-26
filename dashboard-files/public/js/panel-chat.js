@@ -321,6 +321,7 @@ function PanelChat(props) {
   var _sav = useState(false), saving = _sav[0], setSaving = _sav[1];
   var _loaded = useState(false), loaded = _loaded[0], setLoaded = _loaded[1];
   var scrollRef = useRef(null);
+  var guideDismissed = useRef(false);  // Tracks if user manually closed/skipped the popup
 
   useEffect(function() {
     loadStatus();
@@ -338,10 +339,13 @@ function PanelChat(props) {
     if (scrollRef.current) setTimeout(function(){ scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 50);
   }, [messages, sending]);
 
-  // Auto-open guide for first-run users or users without API keys
+  // Auto-open guide for first-run users — but only once, never after dismiss
   useEffect(function() {
+    if (guideDismissed.current) return;  // User already dismissed — never reopen
     if (status && (status.firstRun || !status.chatReady) && loaded && messages.length === 0) {
-      var t = setTimeout(function(){ setGuide('apiKey'); }, 600);
+      var t = setTimeout(function(){
+        if (!guideDismissed.current) setGuide('apiKey');
+      }, 600);
       return function(){ clearTimeout(t); };
     }
   }, [status, loaded]);
@@ -359,7 +363,7 @@ function PanelChat(props) {
           setMessages(function(prev){return prev.concat([{role:'assistant',content:r.reply,ts:new Date().toISOString()}]);});
         } else {
           setMessages(function(prev){return prev.concat([{role:'assistant',content:'\u26A0\uFE0F '+(r.error||'Something went wrong'),ts:new Date().toISOString()}]);});
-          if (r.error && r.error.indexOf('No API keys') >= 0) setTimeout(function(){ setGuide('apiKey'); }, 500);
+          if (r.error && r.error.indexOf('No API keys') >= 0 && !guideDismissed.current) setTimeout(function(){ setGuide('apiKey'); }, 500);
         }
       })
       .catch(function(e) {
@@ -374,6 +378,7 @@ function PanelChat(props) {
 
   function handleKeySave(provider, key) {
     setSaving(true);
+    guideDismissed.current = true;  // Don't reopen popup after a save attempt
     api('/chat/save-key', {method:'POST', body:{provider:provider, key:key}})
       .then(function(r) {
         setSaving(false);
@@ -387,8 +392,11 @@ function PanelChat(props) {
           } else {
             toast('API key saved! You can start chatting now.', 'success');
           }
-          api('/chat/complete-setup', {method:'POST'}).catch(function(){});
-          loadStatus();
+          // IMPORTANT: complete-setup MUST finish before loadStatus, otherwise
+          // status still shows firstRun=true and the popup could reopen
+          api('/chat/complete-setup', {method:'POST'})
+            .then(function(){ loadStatus(); })
+            .catch(function(){ loadStatus(); });
         } else {
           toast(r.error || 'Failed to save', 'error');
         }
@@ -410,7 +418,7 @@ function PanelChat(props) {
 
     React.createElement(SetupCards, {status:status, onGuide:setGuide}),
 
-    guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){setGuide(null); loadStatus();}, onKeySave:handleKeySave, saving:saving}) : null,
+    guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){guideDismissed.current=true; setGuide(null); loadStatus();}, onKeySave:handleKeySave, saving:saving}) : null,
 
     React.createElement('div', {ref:scrollRef, style:{flex:1,overflowY:'auto',padding:'20px 20px 12px'}},
       messages.length === 0 ? React.createElement(ChatWelcome, {status:status, onGuide:setGuide}) : null,
