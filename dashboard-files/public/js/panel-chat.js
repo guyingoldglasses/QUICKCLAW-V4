@@ -97,6 +97,8 @@ function GuidePopup(props) {
   if (!g) return null;
 
   function handleSave(overrideProvider) {
+    // Guard: onClick passes a click event as first arg — ignore it
+    if (overrideProvider && typeof overrideProvider !== 'string') overrideProvider = null;
     var provider = overrideProvider || selectedProvider;
     if (!inputVal.trim() || !provider) return;
     onKeySave(provider, inputVal.trim());
