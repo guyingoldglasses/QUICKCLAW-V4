@@ -200,56 +200,66 @@ router.delete('/api/chat/history', (req, res) => {
 
 // ═══ QUICK KEY SAVE — from onboarding ═══
 router.post('/api/chat/save-key', async (req, res) => {
-  const { provider, key } = req.body;
-  if (!provider || !key) return res.status(400).json({ ok: false, error: 'Provider and key required' });
-
-  const settings = st.getSettings();
-  if (provider === 'openai') {
-    settings.openaiApiKey = key;
-  } else if (provider === 'anthropic') {
-    settings.anthropicApiKey = key;
-  } else if (provider === 'telegram') {
-    const token = String(key).trim();
-    if (!token.includes(':')) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token. It should look like 123456789:ABCdef...' });
-    // Write token to ALL config locations OpenClaw might read from
-    const writeResults = st.writeTelegramTokenEverywhere(token);
-    // Auto-restart gateway so it picks up the new token
-    let gatewayRestarted = false;
-    try {
-      await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-      await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-      const gw = await h.gatewayState();
-      gatewayRestarted = gw.running;
-    } catch {}
-    return res.json({
-      ok: true, provider: 'telegram',
-      writeResults,
-      gatewayRestarted,
-      note: gatewayRestarted
-        ? 'Token saved and gateway restarted! Open your bot in Telegram and send /start.'
-        : 'Token saved to all configs. Start the gateway from the Dashboard, then message your bot.'
-    });
-  } else {
-    return res.status(400).json({ ok: false, error: 'Unknown provider: ' + provider });
-  }
-  st.saveSettings(settings);
-
-  // Also write to active profile .env
   try {
-    const profiles = st.getProfiles();
-    const active = profiles.find(p => p.active) || profiles[0];
-    if (active) {
-      const pp = st.profilePaths(active.id);
-      if (fs.existsSync(pp.configDir)) {
-        const env = h.readEnv(pp.envPath);
-        if (provider === 'openai') env.OPENAI_API_KEY = key;
-        else env.ANTHROPIC_API_KEY = key;
-        h.writeEnv(pp.envPath, env);
-      }
-    }
-  } catch {}
+    const { provider, key } = req.body;
+    if (!provider || !key) return res.status(400).json({ ok: false, error: 'Provider and key required' });
 
-  res.json({ ok: true, provider });
+    if (provider === 'openai' || provider === 'anthropic') {
+      // Save to dashboard settings
+      const update = {};
+      if (provider === 'openai') update.openaiApiKey = key;
+      else update.anthropicApiKey = key;
+      st.saveSettings(update);
+
+      // Also write to active profile .env
+      try {
+        const profiles = st.getProfiles();
+        const active = profiles.find(p => p.active) || profiles[0];
+        if (active) {
+          const pp = st.profilePaths(active.id);
+          if (fs.existsSync(pp.configDir)) {
+            const env = h.readEnv(pp.envPath);
+            if (provider === 'openai') env.OPENAI_API_KEY = key;
+            else env.ANTHROPIC_API_KEY = key;
+            h.writeEnv(pp.envPath, env);
+          }
+        }
+      } catch (envErr) { console.error('Warning: could not write to profile .env:', envErr.message); }
+
+      // Regenerate YAML config
+      try { st.applySettingsToConfigFile(); } catch {}
+
+      return res.json({ ok: true, provider });
+
+    } else if (provider === 'telegram') {
+      const token = String(key).trim();
+      if (!token.includes(':')) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token. It should look like 123456789:ABCdef...' });
+      // Write token to ALL config locations OpenClaw might read from
+      const writeResults = st.writeTelegramTokenEverywhere(token);
+      // Auto-restart gateway so it picks up the new token
+      let gatewayRestarted = false;
+      try {
+        await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+        await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+        const gw = await h.gatewayState();
+        gatewayRestarted = gw.running;
+      } catch {}
+      return res.json({
+        ok: true, provider: 'telegram',
+        writeResults,
+        gatewayRestarted,
+        note: gatewayRestarted
+          ? 'Token saved and gateway restarted! Open your bot in Telegram and send /start.'
+          : 'Token saved to all configs. Start the gateway from the Dashboard, then message your bot.'
+      });
+
+    } else {
+      return res.status(400).json({ ok: false, error: 'Unknown provider: ' + provider });
+    }
+  } catch (err) {
+    console.error('save-key error:', err);
+    res.status(500).json({ ok: false, error: 'Save failed: ' + (err.message || String(err)) });
+  }
 });
 
 // ═══ API CALL HELPERS ═══

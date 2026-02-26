@@ -398,10 +398,15 @@ function PanelChat(props) {
             .then(function(){ loadStatus(); })
             .catch(function(){ loadStatus(); });
         } else {
-          toast(r.error || 'Failed to save', 'error');
+          toast(r.error || 'Save returned an error — check dashboard logs', 'error');
         }
       })
-      .catch(function() { setSaving(false); toast('Failed to save', 'error'); });
+      .catch(function(err) {
+        setSaving(false);
+        var msg = (err && err.message) ? err.message : 'Network error — is the dashboard running?';
+        toast('Failed to save: ' + msg, 'error');
+        console.error('save-key error:', err);
+      });
   }
 
   function clearHistory() {
