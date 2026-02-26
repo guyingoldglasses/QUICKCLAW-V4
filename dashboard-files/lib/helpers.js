@@ -108,7 +108,7 @@ async function gatewayState() {
   const ws18789 = portListeningSync(18789);
   const ws5000 = portListeningSync(5000);
   const profileEnv = _profileEnvFn ? _profileEnvFn() : {};
-  const status = await run(`${cliBin()} gateway status`, { cwd: INSTALL_DIR, env: profileEnv });
+  const status = await run(`${cliBin()} gateway status`, { cwd: INSTALL_DIR, env: { ...process.env, ...profileEnv } });
   const txt = `${status.stdout}\n${status.stderr}`;
   const looksRunning = /Runtime:\s*running|listening on ws:\/\/127\.0\.0\.1:18789|gateway\s+running/i.test(txt);
   return { running: ws18789 || ws5000 || looksRunning, ws18789, port5000: ws5000, statusText: txt.trim() };
@@ -129,7 +129,9 @@ async function gatewayExec(cmd, extraOpts = {}) {
   // Ensure node binary dir is in PATH — critical for macOS launchctl
   const nodeBinDir = path.dirname(process.execPath);
   const currentPath = process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin';
-  const env = { PATH: `${nodeBinDir}:${currentPath}`, ...profileEnv, ...extraOpts.env };
+  // IMPORTANT: include ...process.env because run()'s ...opts spread overrides
+  // the env merge, so we must carry the full environment ourselves
+  const env = { ...process.env, PATH: `${nodeBinDir}:${currentPath}`, ...profileEnv, ...extraOpts.env };
   return run(cmd, { cwd: INSTALL_DIR, timeout: extraOpts.timeout || 30000, ...extraOpts, env });
 }
 
