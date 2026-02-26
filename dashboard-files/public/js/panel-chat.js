@@ -102,6 +102,9 @@ function GuidePopup(props) {
   var _s = useState(''), inputVal = _s[0], setInput = _s[1];
   var _p = useState(null), selectedProvider = _p[0], setProvider = _p[1];
   var _ok = useState(false), saved = _ok[0], setSaved = _ok[1];
+  var _dx = useState(null), diagResult = _dx[0], setDiag = _dx[1];
+  var _dt = useState(false), diagRunning = _dt[0], setDiagRunning = _dt[1];
+  var _gw = useState(false), gwRestarting = _gw[0], setGwRestarting = _gw[1];
 
   if (!guide) return null;
   var g = GUIDES[guide];
@@ -118,6 +121,39 @@ function GuidePopup(props) {
     if (guide === 'apiKey') {
       setTimeout(function() { onClose(); }, 1800);
     }
+    // Auto-run diagnostics for Telegram after a short delay to let gateway restart
+    if (guide === 'telegram') {
+      setDiagRunning(true);
+      setTimeout(function() {
+        api('/chat/telegram-diagnose', {method:'POST', body:{}})
+          .then(function(r){ setDiag(r); setDiagRunning(false); })
+          .catch(function(e){ setDiag({ok:false, error:e.message}); setDiagRunning(false); });
+      }, 5000);
+    }
+  }
+
+  function runDiagnose() {
+    setDiagRunning(true);
+    setDiag(null);
+    api('/chat/telegram-diagnose', {method:'POST', body:{}})
+      .then(function(r){ setDiag(r); setDiagRunning(false); })
+      .catch(function(e){ setDiag({ok:false, error:e.message}); setDiagRunning(false); });
+  }
+
+  function restartGateway() {
+    setGwRestarting(true);
+    api('/chat/gateway-restart', {method:'POST', body:{}})
+      .then(function(r){
+        setGwRestarting(false);
+        if (r.running) {
+          toast('Gateway restarted! Try messaging your bot again.', 'success');
+          // Re-run diagnostics after restart
+          setTimeout(runDiagnose, 2000);
+        } else {
+          toast('Gateway may not have started. Check the Dashboard tab.', 'warning');
+        }
+      })
+      .catch(function(e){ setGwRestarting(false); toast('Restart failed: '+e.message,'error'); });
   }
 
   var overlay = {position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:20,backdropFilter:'blur(4px)'};
@@ -190,21 +226,99 @@ function GuidePopup(props) {
                 saving ? '\u23F3 Saving...' : 'Save & Connect'))
           ) : null,
 
-          // ── Post-save: show activation steps (Telegram) ──
-          saved && g.postSaveSteps ? React.createElement('div', {style:{marginTop:4}},
-            React.createElement('div', {style:{fontSize:15,fontWeight:800,color:'var(--green)',marginBottom:16,display:'flex',alignItems:'center',gap:8}},
+          // ── Post-save: Telegram activation + integrated diagnostics ──
+          saved && guide === 'telegram' ? React.createElement('div', {style:{marginTop:4}},
+            React.createElement('div', {style:{fontSize:15,fontWeight:800,color:'var(--green)',marginBottom:14,display:'flex',alignItems:'center',gap:8}},
               '\u2705 Token Saved Successfully!'),
-            React.createElement('div', {style:{fontSize:14,fontWeight:700,color:'var(--text)',marginBottom:12}},
-              'Now activate your bot:'),
-            g.postSaveSteps.map(function(step, i){
-              return React.createElement('div', {key:i, style:{display:'flex',gap:10,alignItems:'flex-start',
-                padding:'10px 14px',marginBottom:6,borderRadius:10,
-                background: i === 0 ? 'rgba(80,200,120,0.08)' : 'var(--bg)',
-                border: i === 0 ? '1px solid rgba(80,200,120,0.2)' : '1px solid transparent'}},
-                React.createElement('span', {style:{fontSize:18,flexShrink:0,marginTop:1}}, step.icon),
-                React.createElement('span', {style:{fontSize:13,color: i === 0 ? 'var(--green)' : 'var(--dim)',lineHeight:1.6},
-                  dangerouslySetInnerHTML:{__html:step.text}}));
-            })
+
+            // Compact activation checklist
+            React.createElement('div', {style:{padding:'14px 16px',borderRadius:12,background:'var(--bg)',border:'1px solid var(--border)',marginBottom:14}},
+              React.createElement('div', {style:{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:10}}, 'Quick Start:'),
+              ['Find your bot in Telegram by the username you created', 'Tap <b>Start</b> or send <code>/start</code>', 'Send <b>"Hello!"</b> — your AI should reply in a few seconds'].map(function(s,i){
+                return React.createElement('div', {key:i, style:{display:'flex',gap:8,alignItems:'center',marginBottom:6,fontSize:13,color:'var(--dim)'}},
+                  React.createElement('span', {style:{fontWeight:800,color:'var(--accent)',fontSize:14,width:20,textAlign:'center'}}, (i+1)+'.'),
+                  React.createElement('span', {dangerouslySetInnerHTML:{__html:s}, style:{lineHeight:1.5}}));
+              })
+            ),
+
+            // ── Live diagnostic status ──
+            diagRunning ? React.createElement('div', {style:{padding:'16px',borderRadius:12,background:'rgba(100,160,255,0.06)',
+              border:'1px solid rgba(100,160,255,0.2)',textAlign:'center',fontSize:13,color:'#7cb3ff'}},
+              '\u23F3 Checking connection... verifying gateway, token, and Telegram API...') : null,
+
+            diagResult ? React.createElement('div', {style:{padding:'14px 16px',borderRadius:12,background:'var(--bg)',border:'1px solid var(--border)'}},
+              React.createElement('div', {style:{fontWeight:800,fontSize:13,marginBottom:10,color:'var(--text)'}},
+                '\uD83D\uDD0D Connection Status'),
+
+              // Bot info
+              diagResult.botInfo ? React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
+                background:'rgba(80,200,120,0.08)',border:'1px solid rgba(80,200,120,0.2)',marginBottom:6}},
+                React.createElement('span',{style:{fontSize:14}},'\u2705'),
+                React.createElement('span',{style:{color:'var(--green)',fontSize:12}}, 'Bot valid — @'+diagResult.botInfo.username)
+              ) : diagResult.botError ? React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
+                background:'rgba(255,80,80,0.08)',border:'1px solid rgba(255,80,80,0.2)',marginBottom:6}},
+                React.createElement('span',{style:{fontSize:14}},'\u274C'),
+                React.createElement('span',{style:{color:'#ff6b6b',fontSize:12}}, diagResult.botError)
+              ) : null,
+
+              // Gateway status
+              React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
+                background: diagResult.gateway.running ? 'rgba(80,200,120,0.08)' : 'rgba(255,80,80,0.08)',
+                border: '1px solid '+(diagResult.gateway.running ? 'rgba(80,200,120,0.2)' : 'rgba(255,80,80,0.2)'),marginBottom:6}},
+                React.createElement('span',{style:{fontSize:14}}, diagResult.gateway.running ? '\u2705' : '\u274C'),
+                React.createElement('span',{style:{color: diagResult.gateway.running ? 'var(--green)' : '#ff6b6b', fontSize:12}},
+                  diagResult.gateway.running ? 'Gateway running' : 'Gateway NOT running')
+              ),
+
+              // Pending updates
+              typeof diagResult.pendingUpdates === 'number' ? React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
+                background: diagResult.pendingUpdates > 0 ? 'rgba(255,180,60,0.08)' : 'rgba(80,200,120,0.08)',
+                border: '1px solid '+(diagResult.pendingUpdates > 0 ? 'rgba(255,180,60,0.2)' : 'rgba(80,200,120,0.2)'),marginBottom:6}},
+                React.createElement('span',{style:{fontSize:14}}, diagResult.pendingUpdates > 0 ? '\u26A0\uFE0F' : '\u2705'),
+                React.createElement('span',{style:{color: diagResult.pendingUpdates > 0 ? 'var(--accent)' : 'var(--green)', fontSize:12}},
+                  diagResult.pendingUpdates > 0
+                    ? diagResult.pendingUpdates+' unread msg(s) queued — gateway not processing'
+                    : 'Messages polling normally')
+              ) : null,
+
+              // Config locations (collapsed)
+              diagResult.tokenLocations ? React.createElement('div', {style:{padding:'6px 12px',borderRadius:8,marginBottom:6,fontSize:11,color:'var(--muted)',display:'flex',flexWrap:'wrap',gap:8}},
+                Object.entries(diagResult.tokenLocations).map(function(entry){
+                  var loc = entry[0], ok = entry[1];
+                  var label = loc === 'telegramEnabled' ? 'channel' : loc === 'pluginEnabled' ? 'plugin' : loc;
+                  return React.createElement('span',{key:loc,style:{color:ok?'var(--green)':'#ff6b6b'}},
+                    (ok?'\u2713':'\u2717')+' '+label);
+                })
+              ) : null,
+
+              // Suggestions
+              diagResult.suggestions && diagResult.suggestions.length > 0 ? React.createElement('div', {style:{marginTop:4,padding:'8px 12px',borderRadius:8,
+                background:'rgba(255,180,60,0.06)',border:'1px solid rgba(255,180,60,0.15)'}},
+                diagResult.suggestions.map(function(s,i){
+                  return React.createElement('div',{key:i,style:{fontSize:11,color:'var(--dim)',lineHeight:1.5,marginBottom:2}}, '\u2022 '+s);
+                })
+              ) : null,
+
+              // Action buttons
+              React.createElement('div', {style:{display:'flex',gap:6,marginTop:10}},
+                React.createElement('button', {onClick:runDiagnose,
+                  style:{flex:1,padding:'7px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',
+                    border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)'}},
+                  '\uD83D\uDD04 Re-test'),
+                !diagResult.gateway.running || (diagResult.pendingUpdates && diagResult.pendingUpdates > 0) ? React.createElement('button', {onClick:restartGateway, disabled:gwRestarting,
+                  style:{flex:1,padding:'7px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',
+                    border:'none',background:'var(--accent)',color:'#1a1a1a'}},
+                  gwRestarting ? '\u23F3 Restarting...' : '\uD83D\uDD04 Restart Gateway') : null
+              )
+            ) : null,
+
+            // Manual diagnose button (only if auto-diagnose didn't run)
+            !diagResult && !diagRunning ? React.createElement('button', {onClick:runDiagnose,
+              style:{width:'100%',padding:'12px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',
+                border:'2px solid rgba(100,160,255,0.4)',background:'rgba(100,160,255,0.08)',color:'#7cb3ff',
+                transition:'all 0.2s'}},
+              '\uD83D\uDD0D Bot not responding? Test Connection') : null
+
           ) : null,
 
           // ── Post-save: non-telegram guides with afterSaveNote ──

@@ -392,4 +392,173 @@ function saveChatMessage(userMsg, botReply) {
   } catch {}
 }
 
+// ═══ TELEGRAM DIAGNOSTICS ═══
+router.post('/api/chat/telegram-diagnose', async (req, res) => {
+  try {
+    const results = {
+      gateway: { running: false, statusText: '' },
+      tokenLocations: {},
+      botInfo: null,
+      botError: null,
+      recentLogs: '',
+      suggestions: []
+    };
+
+    // 1. Gateway status
+    try {
+      const gw = await h.gatewayState();
+      results.gateway = { running: gw.running, statusText: gw.statusText, ws18789: gw.ws18789, port5000: gw.port5000 };
+    } catch (e) { results.gateway.statusText = 'Error checking: ' + e.message; }
+
+    // 2. Check token in all locations
+    const settings = st.getSettings();
+    const profiles = st.getProfiles();
+    const active = profiles.find(p => p.active) || profiles[0];
+    let foundToken = '';
+
+    // settings.json
+    const stToken = settings.telegramBotToken || '';
+    results.tokenLocations.settings = !!stToken;
+    if (stToken) foundToken = stToken;
+
+    if (active) {
+      const pp = st.profilePaths(active.id);
+      // .env file
+      try {
+        const env = h.readEnv(pp.envPath);
+        const envToken = env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_TOKEN || '';
+        results.tokenLocations.env = !!envToken;
+        if (envToken && !foundToken) foundToken = envToken;
+      } catch { results.tokenLocations.env = false; }
+
+      // clawdbot.json
+      try {
+        const cfg = h.readJson(pp.configJson, {});
+        const cfgToken = cfg.channels?.telegram?.botToken || '';
+        const cfgEnabled = !!cfg.channels?.telegram?.enabled;
+        const pluginEnabled = !!cfg.plugins?.entries?.telegram?.enabled;
+        results.tokenLocations.configJson = !!cfgToken;
+        results.tokenLocations.telegramEnabled = cfgEnabled;
+        results.tokenLocations.pluginEnabled = pluginEnabled;
+        if (cfgToken && !foundToken) foundToken = cfgToken;
+      } catch { results.tokenLocations.configJson = false; }
+
+      // credentials/telegram.json
+      try {
+        const credFile = path.join(pp.configDir, 'credentials', 'telegram.json');
+        const cred = h.readJson(credFile, {});
+        results.tokenLocations.credentials = !!cred.botToken;
+      } catch { results.tokenLocations.credentials = false; }
+    }
+
+    // 3. Validate token with Telegram API (getMe)
+    if (foundToken) {
+      try {
+        const botInfo = await new Promise((resolve, reject) => {
+          const https = require('https');
+          const req = https.get(`https://api.telegram.org/bot${foundToken}/getMe`, { timeout: 8000 }, (resp) => {
+            let data = '';
+            resp.on('data', c => data += c);
+            resp.on('end', () => {
+              try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid JSON from Telegram')); }
+            });
+          });
+          req.on('error', reject);
+          req.on('timeout', () => { req.destroy(); reject(new Error('Telegram API timed out')); });
+        });
+        if (botInfo.ok) {
+          results.botInfo = { username: botInfo.result.username, firstName: botInfo.result.first_name, id: botInfo.result.id, canReadMessages: botInfo.result.can_read_all_group_messages };
+        } else {
+          results.botError = botInfo.description || 'Telegram rejected the token';
+        }
+      } catch (e) {
+        results.botError = 'Could not reach Telegram API: ' + e.message;
+      }
+
+      // 3b. Check for pending updates (are messages reaching the bot?)
+      try {
+        const updates = await new Promise((resolve, reject) => {
+          const https = require('https');
+          const req = https.get(`https://api.telegram.org/bot${foundToken}/getUpdates?limit=3&timeout=0`, { timeout: 8000 }, (resp) => {
+            let data = '';
+            resp.on('data', c => data += c);
+            resp.on('end', () => {
+              try { resolve(JSON.parse(data)); } catch { reject(new Error('Invalid JSON')); }
+            });
+          });
+          req.on('error', reject);
+          req.on('timeout', () => { req.destroy(); reject(new Error('timed out')); });
+        });
+        if (updates.ok) {
+          results.pendingUpdates = updates.result.length;
+          if (updates.result.length > 0) {
+            results.lastUpdate = {
+              from: updates.result[updates.result.length - 1].message?.from?.first_name || 'unknown',
+              text: (updates.result[updates.result.length - 1].message?.text || '').slice(0, 50),
+              date: updates.result[updates.result.length - 1].message?.date
+            };
+          }
+        }
+      } catch {}
+    } else {
+      results.botError = 'No token found in any config location';
+    }
+
+    // 4. Recent gateway logs
+    try {
+      const logPath = path.join(h.LOG_DIR, 'gateway.log');
+      if (fs.existsSync(logPath)) {
+        const log = fs.readFileSync(logPath, 'utf-8');
+        const lines = log.split('\n').filter(l => l.trim());
+        results.recentLogs = lines.slice(-15).join('\n');
+      }
+    } catch {}
+
+    // 5. Build suggestions
+    if (!results.gateway.running) {
+      results.suggestions.push('Gateway is NOT running. Try restarting it from the Dashboard tab, or click "Restart Gateway" below.');
+    }
+    if (results.botError && results.botError.includes('Unauthorized')) {
+      results.suggestions.push('Telegram says the bot token is INVALID. Double-check you copied the full token from BotFather.');
+    }
+    if (results.botError && results.botError.includes('timed out')) {
+      results.suggestions.push('Could not reach Telegram API. Check your internet connection.');
+    }
+    if (!results.tokenLocations.configJson) {
+      results.suggestions.push('Token missing from clawdbot.json — the main config file OpenClaw reads.');
+    }
+    if (!results.tokenLocations.telegramEnabled) {
+      results.suggestions.push('Telegram channel is not enabled in clawdbot.json.');
+    }
+    if (!results.tokenLocations.pluginEnabled) {
+      results.suggestions.push('Telegram plugin is not enabled in clawdbot.json.');
+    }
+    if (results.pendingUpdates > 0) {
+      results.suggestions.push('There are ' + results.pendingUpdates + ' unprocessed messages from Telegram — the gateway is not polling them. It may need a restart.');
+    }
+    if (results.gateway.running && results.botInfo && results.pendingUpdates === 0 && results.tokenLocations.configJson) {
+      results.suggestions.push('Everything looks configured correctly. Try sending another message in Telegram and wait 10-15 seconds.');
+    }
+
+    res.json({ ok: true, ...results });
+  } catch (err) {
+    console.error('telegram-diagnose error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ═══ GATEWAY RESTART (dedicated endpoint) ═══
+router.post('/api/chat/gateway-restart', async (req, res) => {
+  try {
+    await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+    await new Promise(r => setTimeout(r, 2000)); // Let it fully stop
+    await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+    await new Promise(r => setTimeout(r, 3000)); // Let it start up
+    const gw = await h.gatewayState();
+    res.json({ ok: true, running: gw.running, statusText: gw.statusText });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;
