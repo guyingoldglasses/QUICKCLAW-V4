@@ -205,11 +205,33 @@ router.post('/api/chat/save-key', async (req, res) => {
     if (!provider || !key) return res.status(400).json({ ok: false, error: 'Provider and key required' });
 
     if (provider === 'openai' || provider === 'anthropic') {
-      // Save to dashboard settings
-      const update = {};
-      if (provider === 'openai') update.openaiApiKey = key;
-      else update.anthropicApiKey = key;
-      st.saveSettings(update);
+      // Direct file write — avoids read-merge cycle that can fail with corrupt files
+      try {
+        let current = {};
+        try { current = JSON.parse(fs.readFileSync(h.SETTINGS_PATH, 'utf-8')); } catch {}
+        if (!current || typeof current !== 'object' || Array.isArray(current)) current = {};
+        // Only keep known safe keys
+        const safe = {
+          openaiApiKey: String(current.openaiApiKey || ''),
+          openaiOAuthEnabled: !!current.openaiOAuthEnabled,
+          anthropicApiKey: String(current.anthropicApiKey || ''),
+          telegramBotToken: String(current.telegramBotToken || ''),
+          ftpHost: String(current.ftpHost || ''),
+          ftpUser: String(current.ftpUser || ''),
+          emailUser: String(current.emailUser || '')
+        };
+        // Apply the new key
+        if (provider === 'openai') safe.openaiApiKey = String(key);
+        else safe.anthropicApiKey = String(key);
+        // Write directly
+        const dir = path.dirname(h.SETTINGS_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(h.SETTINGS_PATH, JSON.stringify(safe, null, 2));
+        console.log('✓ API key saved for', provider);
+      } catch (writeErr) {
+        console.error('settings.json write error:', writeErr.message);
+        return res.status(500).json({ ok: false, error: 'Could not write settings: ' + writeErr.message });
+      }
 
       // Also write to active profile .env
       try {

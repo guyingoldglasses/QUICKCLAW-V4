@@ -9,10 +9,24 @@ const TOKEN = new URLSearchParams(window.location.search).get('token') || '';
 async function api(ep, opts = {}) {
   const sep = ep.includes('?') ? '&' : '?';
   const cfg = {headers: {'Content-Type': 'application/json'}, ...opts};
-  if (opts.body && typeof opts.body === 'object') cfg.body = JSON.stringify(opts.body);
+  if (opts.body && typeof opts.body === 'object') {
+    try { cfg.body = JSON.stringify(opts.body); }
+    catch (e) {
+      // Fallback: manually build a clean object with only string/number/boolean values
+      var clean = {};
+      Object.keys(opts.body).forEach(function(k) {
+        var v = opts.body[k];
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || v === null) clean[k] = v;
+      });
+      cfg.body = JSON.stringify(clean);
+    }
+  }
   const res = await fetch('/api' + ep + sep + 'token=' + TOKEN, cfg);
   if (res.status === 401) throw new Error('Unauthorized');
-  return res.json();
+  // Handle non-JSON responses gracefully
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch (e) { throw new Error(text.slice(0, 200) || 'Empty response from server'); }
 }
 
 function dlUrl(ep) {
