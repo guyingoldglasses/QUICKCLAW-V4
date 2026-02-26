@@ -303,11 +303,26 @@ function GuidePopup(props) {
               diagResult.recentLogs ? React.createElement('div', {style:{marginTop:6}},
                 React.createElement('details', {style:{fontSize:11}},
                   React.createElement('summary', {style:{cursor:'pointer',color:'var(--muted)',fontWeight:700,padding:'4px 0',userSelect:'none'}},
-                    '\uD83D\uDCDC Gateway Log (last 15 lines)'),
+                    '\uD83D\uDCDC Gateway Log (all sources)'),
                   React.createElement('pre', {style:{margin:'6px 0 0',padding:'8px 10px',borderRadius:6,background:'#111',
                     color:'#9d9',fontSize:10,lineHeight:1.4,whiteSpace:'pre-wrap',wordBreak:'break-all',
-                    maxHeight:160,overflow:'auto',border:'1px solid var(--border)'}},
+                    maxHeight:200,overflow:'auto',border:'1px solid var(--border)'}},
                     diagResult.recentLogs))
+              ) : null,
+
+              // Config summary
+              diagResult.configSummary ? React.createElement('div', {style:{marginTop:6}},
+                React.createElement('details', {style:{fontSize:11}},
+                  React.createElement('summary', {style:{cursor:'pointer',color:'var(--muted)',fontWeight:700,padding:'4px 0',userSelect:'none'}},
+                    '\u2699\uFE0F Config Details'),
+                  React.createElement('div', {style:{margin:'6px 0 0',padding:'8px 10px',borderRadius:6,background:'#111',
+                    fontSize:10,lineHeight:1.6,color:'var(--dim)',border:'1px solid var(--border)'}},
+                    React.createElement('div', null, 'Path: ' + (diagResult.configSummary.configPath || '?')),
+                    React.createElement('div', null, 'Token: ' + (diagResult.configSummary.tokenPreview || 'none')),
+                    React.createElement('div', null, 'Telegram channel: ' + (diagResult.configSummary.telegramEnabled ? '\u2705 enabled' : '\u274C disabled')),
+                    React.createElement('div', null, 'Telegram plugin: ' + (diagResult.configSummary.pluginEnabled ? '\u2705 enabled' : '\u274C disabled')),
+                    React.createElement('div', null, 'Channels: ' + (diagResult.configSummary.allChannels || []).join(', ')),
+                    React.createElement('div', null, 'Plugins: ' + (diagResult.configSummary.allPlugins || []).join(', '))))
               ) : null,
 
               // Action buttons

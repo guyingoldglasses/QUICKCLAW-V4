@@ -532,15 +532,53 @@ router.post('/api/chat/telegram-diagnose', async (req, res) => {
       results.botError = 'No token found in any config location';
     }
 
-    // 4. Recent gateway logs
-    try {
-      const logPath = path.join(h.LOG_DIR, 'gateway.log');
-      if (fs.existsSync(logPath)) {
-        const log = fs.readFileSync(logPath, 'utf-8');
-        const lines = log.split('\n').filter(l => l.trim());
-        results.recentLogs = lines.slice(-15).join('\n');
-      }
-    } catch {}
+    // 4. Recent gateway logs — check BOTH QuickClaw log dir AND OpenClaw's own log dir
+    const logSources = [
+      path.join(h.LOG_DIR, 'gateway.log'),
+      path.join(h.HOME, '.openclaw', 'logs', 'gateway.log'),
+      path.join(h.HOME, '.clawdbot', 'logs', 'gateway.log')
+    ];
+    // Also check active profile's config dir for logs
+    if (active) {
+      const pp = st.profilePaths(active.id);
+      logSources.push(path.join(pp.configDir, 'logs', 'gateway.log'));
+    }
+    const allLogs = [];
+    const seenPaths = new Set();
+    for (const logPath of logSources) {
+      const resolved = path.resolve(logPath);
+      if (seenPaths.has(resolved)) continue;
+      seenPaths.add(resolved);
+      try {
+        if (fs.existsSync(logPath)) {
+          const log = fs.readFileSync(logPath, 'utf-8');
+          const lines = log.split('\n').filter(l => l.trim());
+          if (lines.length > 0) {
+            allLogs.push('── ' + logPath + ' ──');
+            allLogs.push(...lines.slice(-12));
+          }
+        }
+      } catch {}
+    }
+    results.recentLogs = allLogs.length > 0 ? allLogs.join('\n') : 'No gateway logs found';
+
+    // 4b. Dump actual clawdbot.json config summary for debugging
+    if (active) {
+      try {
+        const pp = st.profilePaths(active.id);
+        const cfg = h.readJson(pp.configJson, {});
+        results.configSummary = {
+          configPath: pp.configJson,
+          hasTelegramChannel: !!(cfg.channels && cfg.channels.telegram),
+          telegramEnabled: !!(cfg.channels && cfg.channels.telegram && cfg.channels.telegram.enabled),
+          hasToken: !!(cfg.channels && cfg.channels.telegram && cfg.channels.telegram.botToken),
+          tokenPreview: cfg.channels?.telegram?.botToken ? h.maskKey(cfg.channels.telegram.botToken) : 'none',
+          pluginEnabled: !!(cfg.plugins?.entries?.telegram?.enabled),
+          allChannels: Object.keys(cfg.channels || {}),
+          allPlugins: Object.keys(cfg.plugins?.entries || {})
+        };
+      } catch {}
+    }
 
     // 5. Build suggestions
     if (!results.gateway.running) {
