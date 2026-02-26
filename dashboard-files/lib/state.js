@@ -210,6 +210,102 @@ function applySettingsToConfigFile() {
   return { path: h.CONFIG_PATH, backup };
 }
 
+// ═══ COMPREHENSIVE TELEGRAM SAVE — writes token to ALL config locations ═══
+function writeTelegramTokenEverywhere(token) {
+  const results = { settings: false, env: false, configJson: false, openclawJson: false, yamlConfig: false };
+
+  // 1. Dashboard settings.json
+  try { saveSettings({ telegramBotToken: token }); results.settings = true; } catch {}
+
+  // 2. Active profile .env (both key variants OpenClaw might use)
+  try {
+    const profiles = getProfiles();
+    const active = profiles.find(p => p.active) || profiles[0];
+    if (active) {
+      const pp = profilePaths(active.id);
+      if (fs.existsSync(pp.configDir)) {
+        fs.mkdirSync(pp.configDir, { recursive: true });
+        const env = h.readEnv(pp.envPath);
+        env.TELEGRAM_BOT_TOKEN = token;
+        env.TELEGRAM_TOKEN = token;
+        h.writeEnv(pp.envPath, env);
+        results.env = true;
+      }
+    }
+  } catch {}
+
+  // 3. Profile clawdbot.json (the main config OpenClaw reads)
+  try {
+    const profiles = getProfiles();
+    const active = profiles.find(p => p.active) || profiles[0];
+    if (active) {
+      const pp = profilePaths(active.id);
+      if (fs.existsSync(pp.configJson)) {
+        const cfg = h.readJson(pp.configJson, {});
+        if (!cfg.channels) cfg.channels = {};
+        if (!cfg.channels.telegram) cfg.channels.telegram = {};
+        cfg.channels.telegram.botToken = token;
+        cfg.channels.telegram.enabled = true;
+        // Also enable telegram plugin if plugins section exists
+        if (!cfg.plugins) cfg.plugins = {};
+        if (!cfg.plugins.entries) cfg.plugins.entries = {};
+        if (!cfg.plugins.entries.telegram) cfg.plugins.entries.telegram = {};
+        cfg.plugins.entries.telegram.enabled = true;
+        h.writeJson(pp.configJson, cfg);
+        results.configJson = true;
+      }
+    }
+  } catch {}
+
+  // 4. ~/.openclaw/openclaw.json (if it exists)
+  try { const r = writeOpenclawTelegramToken(token); results.openclawJson = r.ok || false; } catch {}
+
+  // 5. YAML config (default.yaml)
+  try { applySettingsToConfigFile(); results.yamlConfig = true; } catch {}
+
+  // 6. Also write to credentials dir (some OpenClaw versions read from here)
+  try {
+    const profiles = getProfiles();
+    const active = profiles.find(p => p.active) || profiles[0];
+    if (active) {
+      const pp = profilePaths(active.id);
+      const credDir = path.join(pp.configDir, 'credentials');
+      fs.mkdirSync(credDir, { recursive: true });
+      const credFile = path.join(credDir, 'telegram.json');
+      h.writeJson(credFile, { botToken: token, enabled: true, updatedAt: new Date().toISOString() });
+    }
+  } catch {}
+
+  return results;
+}
+
+// ═══ NEWS SOURCE BUILDER — builds curl commands for each news source ═══
+function buildNewsSources(prefs, random) {
+  const customSources = {};
+  if (prefs?.sources) {
+    Object.entries(prefs.sources).forEach(([k, v]) => {
+      if (k.startsWith('custom_') && v && typeof v === 'object' && v.url) {
+        const domain = v.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        customSources[k] = { name: v.name || domain, cmd: `curl -s "https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(domain)}&tags=story&hitsPerPage=8" 2>/dev/null`, type: 'hn' };
+      }
+    });
+  }
+  const ALL_SOURCES = {
+    hn_ai: { name: 'HN: AI/ML', cmd: 'curl -s "https://hn.algolia.com/api/v1/search?query=open+source+AI+LLM&tags=story&hitsPerPage=15" 2>/dev/null', type: 'hn' },
+    hn_openclaw: { name: 'HN: OpenClaw', cmd: 'curl -s "https://hn.algolia.com/api/v1/search?query=openclaw+OR+clawdbot&tags=story&hitsPerPage=12" 2>/dev/null', type: 'hn' },
+    hn_agents: { name: 'HN: AI Agents', cmd: 'curl -s "https://hn.algolia.com/api/v1/search?query=AI+agents+autonomous+tool+use&tags=story&hitsPerPage=12" 2>/dev/null', type: 'hn' },
+    hn_llm: { name: 'HN: LLM Dev', cmd: 'curl -s "https://hn.algolia.com/api/v1/search?query=LLM+development+fine+tuning+local&tags=story&hitsPerPage=12" 2>/dev/null', type: 'hn' },
+    github: { name: 'GitHub Trending', cmd: 'curl -s "https://api.github.com/search/repositories?q=openclaw+OR+llm+agent+OR+open+source+ai&sort=updated&order=desc&per_page=12" 2>/dev/null', type: 'github' },
+    reddit_ai: { name: 'Reddit: AI', cmd: 'curl -s "https://www.reddit.com/r/artificial+LocalLLaMA+MachineLearning/top.json?t=day&limit=12" 2>/dev/null', type: 'reddit' },
+    arxiv: { name: 'arXiv: AI Papers', cmd: 'curl -s "http://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=10" 2>/dev/null', type: 'arxiv' },
+    techcrunch: { name: 'HN: TechCrunch AI', cmd: 'curl -s "https://hn.algolia.com/api/v1/search?query=AI+startup+funding&tags=story&hitsPerPage=10" 2>/dev/null', type: 'hn' },
+  };
+  const combined = Object.assign({}, ALL_SOURCES, customSources);
+  if (random) return Object.entries(combined);
+  const srcPrefs = prefs?.sources || {};
+  return Object.entries(combined).filter(([k]) => srcPrefs[k] !== false);
+}
+
 module.exports = {
   getProfiles, saveProfiles, profilePaths, profileEnvVars, findSoul,
   getSkillStates, saveSkillStates, getSettings, saveSettings,
@@ -218,5 +314,6 @@ module.exports = {
   getProfileEnvStore, saveProfileEnvStore, getProfileEnv,
   aggregateUsage, loadNews, saveNews, loadNewsPrefs, saveNewsPrefs,
   getVersions, saveVersionsMeta,
-  openclawConfigPath, writeOpenclawTelegramToken, backupCurrentConfig, applySettingsToConfigFile
+  openclawConfigPath, writeOpenclawTelegramToken, backupCurrentConfig, applySettingsToConfigFile,
+  writeTelegramTokenEverywhere, buildNewsSources
 };

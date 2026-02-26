@@ -51,6 +51,14 @@ router.get('/api/chat/status', async (req, res) => {
       if (!hasOpenaiKey && env.OPENAI_API_KEY) hasOpenaiKey = true;
       if (!hasAnthropicKey && env.ANTHROPIC_API_KEY) hasAnthropicKey = true;
       if (!hasTelegram && env.TELEGRAM_BOT_TOKEN) hasTelegram = true;
+      if (!hasTelegram && env.TELEGRAM_TOKEN) hasTelegram = true;
+      // Also check clawdbot.json channels config
+      if (!hasTelegram) {
+        try {
+          const cfg = h.readJson(pp.configJson, {});
+          if (cfg?.channels?.telegram?.botToken) hasTelegram = true;
+        } catch {}
+      }
 
       // Check codex auth.json for OAuth
       const codexAuth = path.join(h.HOME, '.codex', 'auth.json');
@@ -191,7 +199,7 @@ router.delete('/api/chat/history', (req, res) => {
 });
 
 // ═══ QUICK KEY SAVE — from onboarding ═══
-router.post('/api/chat/save-key', (req, res) => {
+router.post('/api/chat/save-key', async (req, res) => {
   const { provider, key } = req.body;
   if (!provider || !key) return res.status(400).json({ ok: false, error: 'Provider and key required' });
 
@@ -200,6 +208,27 @@ router.post('/api/chat/save-key', (req, res) => {
     settings.openaiApiKey = key;
   } else if (provider === 'anthropic') {
     settings.anthropicApiKey = key;
+  } else if (provider === 'telegram') {
+    const token = String(key).trim();
+    if (!token.includes(':')) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token. It should look like 123456789:ABCdef...' });
+    // Write token to ALL config locations OpenClaw might read from
+    const writeResults = st.writeTelegramTokenEverywhere(token);
+    // Auto-restart gateway so it picks up the new token
+    let gatewayRestarted = false;
+    try {
+      await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+      await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+      const gw = await h.gatewayState();
+      gatewayRestarted = gw.running;
+    } catch {}
+    return res.json({
+      ok: true, provider: 'telegram',
+      writeResults,
+      gatewayRestarted,
+      note: gatewayRestarted
+        ? 'Token saved and gateway restarted! Open your bot in Telegram and send /start.'
+        : 'Token saved to all configs. Start the gateway from the Dashboard, then message your bot.'
+    });
   } else {
     return res.status(400).json({ ok: false, error: 'Unknown provider: ' + provider });
   }

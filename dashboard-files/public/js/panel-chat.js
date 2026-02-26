@@ -53,17 +53,18 @@ var GUIDES = {
   telegram: {
     title: 'Chat on Your Phone via Telegram',
     subtitle: 'Takes about 2 minutes to set up',
+    hasInput: true,
+    inputProvider: 'telegram',
+    inputPlaceholder: '123456789:ABCdef...',
+    inputLabel: '\uD83D\uDC47 Paste your bot token from BotFather here:',
     steps: [
       'Open <b>Telegram</b> on your phone (free from App Store / Play Store)',
       'Search for <b>@BotFather</b> and open a chat with it',
       'Send the command <code style="background:var(--bg);padding:2px 6px;border-radius:4px">/newbot</code>',
-      'Choose a <b>name</b> for your bot (e.g. "My AI Assistant")',
-      'Choose a <b>username</b> ending in "bot" (e.g. "myai_helper_bot")',
-      'BotFather will reply with a <b>bot token</b> — it looks like <code style="background:var(--bg);padding:2px 6px;border-radius:4px">123456:ABC-DEF...</code>',
-      'Copy this token, then go to <b>Profile &#8594; Comms &#8594; Telegram</b> in this dashboard',
-      'Paste the token and click <b>Save &amp; Restart</b>',
-      'Now open your new bot in Telegram and send a message — your AI will reply!'
-    ]
+      'Choose a <b>name</b> and a <b>username</b> ending in "bot"',
+      'BotFather gives you a <b>bot token</b> \u2014 copy it!'
+    ],
+    afterSaveNote: 'Token saved and gateway restarting! Open your bot in Telegram and send /start — your AI will reply!'
   },
   voice: {
     title: 'Voice-to-Voice Chat',
@@ -95,11 +96,12 @@ function GuidePopup(props) {
   var g = GUIDES[guide];
   if (!g) return null;
 
-  function handleSave() {
-    if (!inputVal.trim() || !selectedProvider) return;
-    onKeySave(selectedProvider, inputVal.trim());
+  function handleSave(overrideProvider) {
+    var provider = overrideProvider || selectedProvider;
+    if (!inputVal.trim() || !provider) return;
+    onKeySave(provider, inputVal.trim());
     setSaved(true);
-    setTimeout(function() { onClose(); }, 1500);
+    setTimeout(function() { onClose(); }, 1800);
   }
 
   var overlay = {position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:20,backdropFilter:'blur(4px)'};
@@ -147,8 +149,38 @@ function GuidePopup(props) {
         React.createElement('div', null,
           React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
             g.steps.map(function(s,i){return React.createElement('li',{key:i,style:{paddingLeft:4,marginBottom:4},dangerouslySetInnerHTML:{__html:s}});})),
-          guide === 'telegram' ? React.createElement('div', {style:{marginTop:16,padding:14,borderRadius:10,background:'rgba(255,180,60,0.08)',border:'1px solid rgba(255,180,60,0.2)',fontSize:12,color:'var(--accent)',lineHeight:1.5,textAlign:'center'}},
-            'Don\'t have Telegram yet? It\'s free for iPhone, Android, Mac, Windows, and web.') : null
+
+          // Prominent inline input for Telegram token
+          g.hasInput ? React.createElement('div', {style:{marginTop:20,padding:20,borderRadius:14,
+            background:'linear-gradient(135deg, rgba(255,180,60,0.1), rgba(255,120,0,0.05))',
+            border:'2px solid rgba(255,180,60,0.35)'}},
+            React.createElement('div', {style:{fontSize:14,fontWeight:800,marginBottom:12,color:'var(--text)',display:'flex',alignItems:'center',gap:8}},
+              React.createElement('span',{style:{fontSize:20}},'\uD83D\uDD11'),
+              g.inputLabel || 'Paste here:'),
+            React.createElement('div', {style:{display:'flex',gap:8}},
+              React.createElement('input', {type:'text', value:inputVal, onChange:function(e){setInput(e.target.value);},
+                placeholder:g.inputPlaceholder || '',
+                autoFocus:true,
+                style:{flex:1,padding:'14px 16px',borderRadius:10,border:'2px solid var(--border)',
+                  background:'var(--card)',color:'var(--text)',fontSize:15,fontFamily:'monospace',outline:'none'}}),
+              React.createElement('button', {onClick:function(){handleSave(g.inputProvider);},
+                disabled:!inputVal.trim()||saving,
+                style:{padding:'14px 28px',borderRadius:10,fontWeight:800,fontSize:15,border:'none',
+                  cursor:inputVal.trim()&&!saving?'pointer':'default',
+                  background:saved?'var(--green)':inputVal.trim()?'var(--accent)':'var(--border)',
+                  color:saved?'#fff':inputVal.trim()?'#1a1a1a':'var(--muted)',transition:'all 0.2s'}},
+                saved ? '\u2713 Saved!' : saving ? '...' : 'Save')),
+            saved && g.afterSaveNote ? React.createElement('div', {style:{marginTop:14,padding:14,borderRadius:10,
+              background:'rgba(80,200,120,0.1)',border:'1px solid rgba(80,200,120,0.2)',fontSize:13,color:'var(--green)',lineHeight:1.6}},
+              '\u2713 ', g.afterSaveNote,
+              guide === 'telegram' ? React.createElement('div',{style:{marginTop:8,fontSize:12,color:'var(--dim)'}},
+                'Open your bot in Telegram and send a message \u2014 your AI will reply!') : null) : null
+          ) : null,
+
+          guide === 'telegram' ? React.createElement('div', {style:{marginTop:14,padding:12,borderRadius:10,
+            background:'rgba(255,180,60,0.08)',border:'1px solid rgba(255,180,60,0.15)',fontSize:12,color:'var(--dim)',lineHeight:1.5,textAlign:'center'}},
+            '\uD83D\uDCA1 Don\'t have Telegram yet? It\'s free for iPhone, Android, Mac, Windows, and web at ',
+            React.createElement('a',{href:'https://telegram.org',target:'_blank',style:{color:'var(--accent)'}},'telegram.org')) : null
         ),
 
         React.createElement('div', {style:{display:'flex',justifyContent:'center',gap:10,marginTop:24}},
@@ -346,15 +378,22 @@ function PanelChat(props) {
       .then(function(r) {
         setSaving(false);
         if (r.ok) {
-          toast('API key saved! You can start chatting now.', 'success');
-          // Mark setup as started (not first-run anymore)
+          if (provider === 'telegram') {
+            if (r.gatewayRestarted) {
+              toast('Token saved & gateway restarted! Open your bot in Telegram and send /start', 'success');
+            } else {
+              toast('Token saved! Start the gateway from the Dashboard, then message your bot.', 'success');
+            }
+          } else {
+            toast('API key saved! You can start chatting now.', 'success');
+          }
           api('/chat/complete-setup', {method:'POST'}).catch(function(){});
           loadStatus();
         } else {
-          toast(r.error || 'Failed to save key', 'error');
+          toast(r.error || 'Failed to save', 'error');
         }
       })
-      .catch(function() { setSaving(false); toast('Failed to save key', 'error'); });
+      .catch(function() { setSaving(false); toast('Failed to save', 'error'); });
   }
 
   function clearHistory() {

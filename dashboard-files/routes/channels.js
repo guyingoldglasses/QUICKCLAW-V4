@@ -70,12 +70,19 @@ router.delete('/api/profiles/:id/telegram/users/:index', (req, res) => {
   h.writeJson(allowFile, allow);
   res.json({ ok: true, removed: removed[0], users: allow.allowFrom });
 });
-router.put('/api/profiles/:id/telegram/setup', (req, res) => {
+router.put('/api/profiles/:id/telegram/setup', async (req, res) => {
   const botToken = String(req.body?.botToken || '').trim();
   if (!botToken || !botToken.includes(':')) return res.status(400).json({ ok: false, error: 'Invalid bot token format' });
-  st.saveSettings({ telegramBotToken: botToken });
-  const sync = st.writeOpenclawTelegramToken(botToken);
-  res.json({ ok: true, message: 'Telegram bot token saved.', sync, instructions: 'Restart gateway, then message your bot with /start.' });
+  const writeResults = st.writeTelegramTokenEverywhere(botToken);
+  // Auto-restart gateway
+  let gatewayRestarted = false;
+  try {
+    await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+    await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+    const gw = await h.gatewayState();
+    gatewayRestarted = gw.running;
+  } catch {}
+  res.json({ ok: true, message: 'Telegram bot token saved to all configs.', writeResults, gatewayRestarted, instructions: gatewayRestarted ? 'Gateway restarted! Message your bot with /start.' : 'Start the gateway, then message your bot with /start.' });
 });
 
 // ═══ GENERIC CHANNEL SETUP (Discord, WhatsApp, iMessage) ═══
