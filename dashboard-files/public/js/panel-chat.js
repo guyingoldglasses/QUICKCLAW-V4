@@ -252,10 +252,10 @@ function GuidePopup(props) {
             // Progress steps
             (function() {
               var phases = [
-                {id:'saving', label:'Saving token to config...', done:'Token saved'},
+                {id:'saving', label:'Saving token to all configs...', done:'Token saved'},
                 {id:'stopping', label:'Stopping gateway...', done:'Gateway stopped'},
-                {id:'starting', label:'Starting gateway (installing service)...', done:'Gateway started'},
-                {id:'connecting', label:'Connecting to Telegram...', done:'Connected to Telegram'}
+                {id:'starting', label:'Installing service & starting gateway...', done:'Gateway started'},
+                {id:'connecting', label:'Connecting to Telegram & verifying...', done:'Connected to Telegram'}
               ];
               var phaseOrder = ['saving','stopping','starting','connecting','done','failed'];
               var currentIdx = phaseOrder.indexOf(activatePhase);
@@ -296,20 +296,20 @@ function GuidePopup(props) {
                         '@' + activateResult.botInfo.username + ' \u2014 ' + activateResult.botInfo.firstName))
                   ) : null,
 
-                  // Pairing info
+                  // How to use the bot + security info
                   activateResult && activateResult.pairingInfo ? React.createElement('div', {style:{padding:'14px 16px',borderRadius:12,
                     background:'linear-gradient(135deg, rgba(255,180,60,0.08), rgba(255,120,0,0.04))',
                     border:'2px solid rgba(255,180,60,0.25)',marginBottom:12}},
                     React.createElement('div', {style:{fontWeight:800,fontSize:14,color:'var(--text)',marginBottom:10}},
-                      '\uD83D\uDD17 Connect Your Telegram Account'),
+                      '\uD83D\uDCF1 Start Chatting'),
                     activateResult.pairingInfo.mode === 'pairing' ?
                       React.createElement('div', null,
                         React.createElement('div', {style:{fontSize:13,color:'var(--dim)',lineHeight:1.7,marginBottom:10},
-                          dangerouslySetInnerHTML:{__html:'Your bot uses <b>pairing mode</b> for security. To link your account:'}}),
+                          dangerouslySetInnerHTML:{__html:'Your bot uses <b>pairing mode</b> — link your Telegram account first:'}}),
                         React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
                           React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Open <b>@' + (activateResult.botInfo ? activateResult.botInfo.username : 'your_bot') + '</b> in Telegram'}}),
-                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Send <b>/start</b> \u2014 the bot will show you a <b>pairing code</b>'}}),
-                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Open <b>Terminal</b> on your Mac and run:'}}),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Send <b>/start</b> — the bot replies with a <b>pairing code</b>'}}),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'In <b>Terminal</b>, run:'}}),
                           React.createElement('li', {style:{paddingLeft:4,listStyle:'none',marginLeft:-22}},
                             React.createElement('div', {style:{padding:'10px 14px',borderRadius:8,background:'var(--bg)',border:'1px solid var(--border)',
                               fontFamily:'monospace',fontSize:12,color:'var(--accent)',cursor:'pointer',position:'relative',marginTop:4},
@@ -318,11 +318,19 @@ function GuidePopup(props) {
                               'openclaw channels login --channel telegram',
                               React.createElement('span',{style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
                                 fontSize:10,color:'var(--dim)'}},'\uD83D\uDCCB'))),
-                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Enter the pairing code when prompted \u2014 done!'}}))
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Enter the code — you\u2019re linked!'}}))
                       ) :
-                      React.createElement('div', {style:{fontSize:13,color:'var(--dim)',lineHeight:1.7},
-                        dangerouslySetInnerHTML:{__html:'Your bot is in <b>' + activateResult.pairingInfo.mode + '</b> mode. ' +
-                        'Open <b>@' + (activateResult.botInfo ? activateResult.botInfo.username : 'your_bot') + '</b> in Telegram and send any message \u2014 your AI will reply!'}})
+                      React.createElement('div', null,
+                        React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Open <b>@' + (activateResult.botInfo ? activateResult.botInfo.username : 'your_bot') + '</b> in Telegram'}}),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Tap <b>Start</b> or send <b>/start</b>'}}),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Send any message — your AI will reply! \uD83C\uDF89'}})),
+                        React.createElement('div', {style:{marginTop:10,padding:'10px 12px',borderRadius:8,
+                          background:'rgba(100,160,255,0.06)',border:'1px solid rgba(100,160,255,0.15)',
+                          fontSize:11,color:'var(--dim)',lineHeight:1.6},
+                          dangerouslySetInnerHTML:{__html:'\uD83D\uDD12 <b>Security note:</b> Your bot is in \u201C' + activateResult.pairingInfo.mode + '\u201D mode — ' +
+                          'anyone who finds your bot\u2019s username can chat with it. ' +
+                          'All data lives on your external drive. <b>Unplug the drive = bot fully off.</b>'}}))
                   ) : null
                 ) : null
               );
