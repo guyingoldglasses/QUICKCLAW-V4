@@ -6,9 +6,14 @@ function App(){
   var[kbHelp,setKbHelp]=useState(false);
   var toast=function(msg,type){setToastMsg(msg);setToastType(type||'info');setTimeout(function(){setToastMsg(null);},3500);};
   var loadData=async function(){setLoading(true);try{var r=await Promise.all([api('/profiles'),api('/system')]);setProfiles(r[0].profiles||[]);setSystem(r[1]);}catch(e){toast('Connection failed','error');}setLoading(false);};
-  useEffect(function(){loadData();},[]);
+  useEffect(function(){loadData();
+    // First-run detection: if no API keys configured, go straight to Chat
+    api('/chat/status').then(function(s){
+      if(!s.chatReady){setPanel('chat');}
+    }).catch(function(){});
+  },[]);
   useEffect(function(){function h(e){if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')return;
-    if(e.key==='1')nav('dashboard');else if(e.key==='2')nav('updates');else if(e.key==='3')nav('security');else if(e.key==='4')nav('antfarm');else if(e.key==='5')nav('files');else if(e.key==='6')nav('code');else if(e.key==='7')nav('timeline');else if(e.key==='8')nav('news');
+    if(e.key==='1')nav('dashboard');else if(e.key==='c'||e.key==='C')nav('chat');else if(e.key==='2')nav('updates');else if(e.key==='3')nav('security');else if(e.key==='4')nav('antfarm');else if(e.key==='5')nav('files');else if(e.key==='6')nav('code');else if(e.key==='7')nav('timeline');else if(e.key==='8')nav('news');
     else if(e.key==='r')loadData();else if(e.key==='?')setKbHelp(true);else if(e.key==='Escape')setKbHelp(false);}
     window.addEventListener('keydown',h);return function(){window.removeEventListener('keydown',h);};},[]);
   var nav=function(t,id){if(t==='refresh'){loadData();return;}if(t==='profile'){setActiveProfile(id);setPanel('profile');}else setPanel(t);setMobileOpen(false);};
@@ -22,7 +27,7 @@ function App(){
         React.createElement('div',null,React.createElement('div',{style:{fontSize:16,fontWeight:800,color:'var(--accent)'}},'OpenClaw'),React.createElement('div',{className:'mono',style:{fontSize:10,color:'var(--dim)'}},'COMMAND CENTER v2.5'))),
       React.createElement('div',{style:{padding:'12px 12px 4px'}},
         React.createElement('div',{className:'mono',style:{fontSize:10,color:'var(--muted)',textTransform:'uppercase',marginBottom:6,paddingLeft:4}},'Navigation'),
-        [['dashboard','home','Dashboard','1'],['chat','message-circle','Chat','C'],['updates','refresh','Updates','2'],['security','shield','Security','3'],['antfarm','grid','Antfarm','4'],['files','folder','Files','5'],['code','code','Code','6'],['timeline','clock','Timeline','7'],['news','rss','News','8']].map(function(x){
+        [['dashboard','home','Dashboard','1'],['chat','messageCircle','Chat','C'],['updates','refresh','Updates','2'],['security','shield','Security','3'],['antfarm','grid','Antfarm','4'],['files','folder','Files','5'],['code','code','Code','6'],['timeline','clock','Timeline','7'],['news','rss','News','8']].map(function(x){
           return React.createElement('button',{key:x[0],className:'nav-btn '+(panel===x[0]?'active':''),onClick:function(){nav(x[0]);}},
             IC(x[1],16),React.createElement('span',{style:{marginLeft:2}},x[2]),React.createElement('span',{className:'kbd',style:{marginLeft:'auto'}},x[3]));})),
       React.createElement('div',{style:{padding:'4px 12px'}},
@@ -41,7 +46,7 @@ function App(){
       React.createElement('div',{className:'mobile-header',style:{display:'flex'}},
         React.createElement('button',{style:{background:'none',border:'none',color:'var(--text)',fontSize:18,padding:'8px 10px',flexShrink:0},onClick:function(){setMobileOpen(!mobileOpen);}},'☰'),
         React.createElement('div',{className:'top-nav'},
-          [['dashboard','home','Dashboard'],['chat','message-circle','Chat'],['updates','refresh','Updates'],['security','shield','Security'],['antfarm','grid','Antfarm'],['files','folder','Files'],['code','code','Code'],['timeline','clock','Timeline'],['news','rss','News']].map(function(x){
+          [['dashboard','home','Dashboard'],['chat','messageCircle','Chat'],['updates','refresh','Updates'],['security','shield','Security'],['antfarm','grid','Antfarm'],['files','folder','Files'],['code','code','Code'],['timeline','clock','Timeline'],['news','rss','News']].map(function(x){
             return React.createElement('button',{key:x[0],className:'top-nav-btn '+(panel===x[0]?'active':''),onClick:function(){nav(x[0]);setMobileOpen(false);}},IC(x[1],13),x[2]);}),
           profiles.map(function(p){return React.createElement('button',{key:p.id,className:'top-nav-btn '+((panel==='profile'&&activeProfile===p.id)?'active':''),onClick:function(){nav('profile',p.id);setMobileOpen(false);}},
             React.createElement('span',{style:{width:6,height:6,borderRadius:'50%',flexShrink:0,background:p.status==='running'?'var(--green)':'var(--muted)'}}),p.id);}))),

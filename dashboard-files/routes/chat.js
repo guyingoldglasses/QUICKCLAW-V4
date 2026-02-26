@@ -88,7 +88,10 @@ router.get('/api/chat/status', async (req, res) => {
 // ═══ SEND MESSAGE ═══
 router.post('/api/chat/send', async (req, res) => {
   const { message, history, model } = req.body;
-  if (!message) return res.status(400).json({ ok: false, error: 'No message provided' });
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ ok: false, error: 'No message provided' });
+  }
+  const userMessage = message.trim();
 
   try {
     const settings = st.getSettings();
@@ -115,40 +118,46 @@ router.post('/api/chat/send', async (req, res) => {
       }
     }
 
-    // Build conversation
+    // Build conversation — filter out errors and ensure valid content
     const messages = [];
     if (Array.isArray(history)) {
       history.slice(-20).forEach(m => {
-        messages.push({ role: m.role, content: m.content });
+        if (!m || !m.role || !m.content) return;
+        const content = String(m.content).trim();
+        if (!content) return;
+        // Skip error messages from history
+        if (content.startsWith('\u26A0') || content.startsWith('⚠')) return;
+        const role = m.role === 'user' ? 'user' : 'assistant';
+        messages.push({ role, content });
       });
     }
-    messages.push({ role: 'user', content: message });
+    messages.push({ role: 'user', content: userMessage });
 
-    // Try OpenAI-compatible API first (works with gateway too)
+    // Try OpenAI-compatible API first
     if (openaiKey) {
       const reply = await callOpenAI(openaiKey, messages, systemPrompt, model || 'gpt-4o-mini');
-      saveChatMessage(message, reply);
+      saveChatMessage(userMessage, reply);
       return res.json({ ok: true, reply, method: 'openai' });
     }
 
     // Try Anthropic
     if (anthropicKey) {
       const reply = await callAnthropic(anthropicKey, messages, systemPrompt, model || 'claude-sonnet-4-20250514');
-      saveChatMessage(message, reply);
+      saveChatMessage(userMessage, reply);
       return res.json({ ok: true, reply, method: 'anthropic' });
     }
 
     // Try gateway CLI as last resort
     const gw = await h.gatewayState();
     if (gw.running) {
-      const result = await h.run(`echo ${JSON.stringify(message)} | ${h.cliBin()} chat --no-interactive 2>/dev/null`, { timeout: 30000 });
+      const result = await h.run(`echo ${JSON.stringify(userMessage)} | ${h.cliBin()} chat --no-interactive 2>/dev/null`, { timeout: 30000 });
       if (result.ok && result.output) {
-        saveChatMessage(message, result.output);
+        saveChatMessage(userMessage, result.output);
         return res.json({ ok: true, reply: result.output, method: 'gateway-cli' });
       }
     }
 
-    res.json({ ok: false, error: 'No API keys configured. Please add an OpenAI or Anthropic API key to start chatting.' });
+    res.json({ ok: false, error: 'No API keys configured. Click the 🔑 button above to add one.' });
   } catch (e) {
     res.json({ ok: false, error: e.message || 'Chat request failed' });
   }
@@ -201,9 +210,16 @@ router.post('/api/chat/save-key', (req, res) => {
 // ═══ API CALL HELPERS ═══
 function callOpenAI(apiKey, messages, systemPrompt, model) {
   return new Promise((resolve, reject) => {
+    // Ensure all messages have valid string content
+    const cleanMessages = [{ role: 'system', content: String(systemPrompt || 'You are a helpful assistant.') }];
+    messages.forEach(m => {
+      const content = String(m.content || '').trim();
+      if (content) cleanMessages.push({ role: m.role === 'user' ? 'user' : 'assistant', content });
+    });
+
     const body = JSON.stringify({
       model: model || 'gpt-4o-mini',
-      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      messages: cleanMessages,
       max_tokens: 2048,
       temperature: 0.7
     });
@@ -234,10 +250,28 @@ function callOpenAI(apiKey, messages, systemPrompt, model) {
 
 function callAnthropic(apiKey, messages, systemPrompt, model) {
   return new Promise((resolve, reject) => {
+    // Ensure all messages have valid string content and proper alternation
+    const cleanMessages = [];
+    messages.forEach(m => {
+      const content = String(m.content || '').trim();
+      if (!content) return;
+      const role = m.role === 'user' ? 'user' : 'assistant';
+      // Anthropic requires alternating user/assistant — merge consecutive same-role
+      if (cleanMessages.length > 0 && cleanMessages[cleanMessages.length - 1].role === role) {
+        cleanMessages[cleanMessages.length - 1].content += '\n' + content;
+      } else {
+        cleanMessages.push({ role, content });
+      }
+    });
+    // Anthropic requires first message to be 'user'
+    if (cleanMessages.length > 0 && cleanMessages[0].role !== 'user') {
+      cleanMessages.shift();
+    }
+
     const body = JSON.stringify({
       model: model || 'claude-sonnet-4-20250514',
-      system: systemPrompt,
-      messages: messages,
+      system: String(systemPrompt || 'You are a helpful assistant.'),
+      messages: cleanMessages,
       max_tokens: 2048
     });
 

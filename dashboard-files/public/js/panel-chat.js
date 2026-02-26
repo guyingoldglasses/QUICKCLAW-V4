@@ -152,6 +152,9 @@ function GuidePopup(props) {
         ),
 
         React.createElement('div', {style:{display:'flex',justifyContent:'center',gap:10,marginTop:24}},
+          !saved ? React.createElement('button', {onClick:onClose,
+            style:{padding:'12px 28px',borderRadius:10,background:'transparent',color:'var(--muted)',fontSize:13,fontWeight:600,border:'1px solid var(--border)',cursor:'pointer'}},
+            'Skip for now') : null,
           React.createElement('button', {onClick:onClose,
             style:{padding:'12px 36px',borderRadius:10,background:saved?'var(--accent)':'var(--border)',color:saved?'#1a1a1a':'var(--text)',fontSize:14,fontWeight:700,border:'none',cursor:'pointer',transition:'all 0.2s'}},
             saved ? '\uD83C\uDF89 Done! Start Chatting' : 'Close'))
@@ -257,16 +260,16 @@ function ChatBubble(props) {
   var isUser = m.role === 'user';
   var isError = !isUser && m.content && m.content.indexOf('\u26A0') === 0;
   var bubble = {
-    padding:'12px 16px',borderRadius:isUser?'16px 16px 4px 16px':'16px 16px 16px 4px',
+    padding:'14px 18px',borderRadius:isUser?'18px 18px 4px 18px':'18px 18px 18px 4px',
     background:isError?'rgba(255,80,80,0.1)':isUser?'var(--accent)':'var(--card)',
     color:isError?'var(--red)':isUser?'#1a1a1a':'var(--text)',
     border:isError?'1px solid rgba(255,80,80,0.2)':'none',
-    fontSize:14,lineHeight:1.6,maxWidth:'85%',wordBreak:'break-word',
-    whiteSpace:'pre-wrap',boxShadow:'0 1px 3px rgba(0,0,0,0.15)'
+    fontSize:14,lineHeight:1.7,wordBreak:'break-word',
+    whiteSpace:'pre-wrap',boxShadow:'0 2px 6px rgba(0,0,0,0.12)'
   };
 
-  return React.createElement('div', {style:{display:'flex',justifyContent:isUser?'flex-end':'flex-start',marginBottom:12}},
-    React.createElement('div', null,
+  return React.createElement('div', {style:{display:'flex',justifyContent:isUser?'flex-end':'flex-start',marginBottom:16,paddingLeft:isUser?60:0,paddingRight:isUser?0:60}},
+    React.createElement('div', {style:{maxWidth:'100%'}},
       !isUser ? React.createElement('div', {style:{fontSize:10,color:'var(--dim)',marginBottom:3,fontWeight:600}}, '\uD83E\uDD16 Bot') : null,
       React.createElement('div', {style:bubble}, m.content),
       m.ts ? React.createElement('div', {style:{fontSize:10,color:'var(--muted)',marginTop:3,textAlign:isUser?'right':'left'}},
@@ -364,10 +367,10 @@ function PanelChat(props) {
 
     guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){setGuide(null); loadStatus();}, onKeySave:handleKeySave, saving:saving}) : null,
 
-    React.createElement('div', {ref:scrollRef, style:{flex:1,overflowY:'auto',padding:16}},
+    React.createElement('div', {ref:scrollRef, style:{flex:1,overflowY:'auto',padding:'20px 20px 12px'}},
       messages.length === 0 ? React.createElement(ChatWelcome, {status:status, onGuide:setGuide}) : null,
       messages.map(function(m, i) { return React.createElement(ChatBubble, {key:i, message:m}); }),
-      sending ? React.createElement('div', {style:{display:'flex',justifyContent:'flex-start',marginBottom:12}},
+      sending ? React.createElement('div', {style:{display:'flex',justifyContent:'flex-start',marginBottom:16,paddingRight:60}},
         React.createElement('div', {style:{padding:'12px 16px',borderRadius:'16px 16px 16px 4px',background:'var(--card)',boxShadow:'0 1px 3px rgba(0,0,0,0.15)'}},
           React.createElement(TypingDots))) : null),
 
