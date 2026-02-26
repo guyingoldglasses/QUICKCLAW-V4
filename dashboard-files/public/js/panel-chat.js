@@ -64,20 +64,31 @@ var GUIDES = {
       'Choose a <b>name</b> and a <b>username</b> ending in "bot"',
       'BotFather gives you a <b>bot token</b> \u2014 copy it!'
     ],
-    afterSaveNote: 'Token saved and gateway restarting! Open your bot in Telegram and send /start — your AI will reply!'
+    postSaveSteps: [
+      { icon: '\u2705', text: '<b>Token saved</b> and gateway is restarting...' },
+      { icon: '1\uFE0F\u20E3', text: 'Open <b>Telegram</b> and search for your bot by the username you just created' },
+      { icon: '2\uFE0F\u20E3', text: 'Tap <b>Start</b> (or send <code style="background:var(--bg);padding:2px 6px;border-radius:4px">/start</code>) to activate your bot' },
+      { icon: '3\uFE0F\u20E3', text: 'Type a message like <b>"Hello!"</b> \u2014 your AI should reply within a few seconds' },
+      { icon: '\uD83D\uDCA1', text: 'If the bot doesn\u2019t reply, wait 10\u201315 seconds for the gateway to fully restart, then try again' }
+    ],
+    afterSaveNote: null  // We'll use postSaveSteps instead
   },
   voice: {
-    title: 'Voice-to-Voice Chat',
-    subtitle: 'Talk to your bot with your actual voice via Telegram',
+    title: '\uD83C\uDF99\uFE0F Voice Chat Setup',
+    subtitle: 'Talk to your bot with your actual voice',
     steps: [
-      'First, complete Telegram setup above so your bot is connected',
-      'Open your bot\'s chat in the <b>Telegram app</b>',
-      'Tap the <b>microphone icon</b> next to the message box',
-      'Hold to record, release to send — your bot will <b>transcribe</b> your voice and reply',
-      'For <b>voice replies back</b>, add this to your bot\'s <b>soul.md</b> file:<br><code style="background:var(--bg);padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px">When the user sends a voice message, always reply with a voice note.</code>',
-      'You can edit soul.md in <b>Profile &#8594; Soul</b> tab in this dashboard',
-      'Pro tip: Pin your bot to Telegram\'s top bar for instant voice access anytime!'
-    ]
+      'Open your bot\u2019s chat in the <b>Telegram app</b>',
+      'Tap the <b>microphone icon</b> \uD83C\uDF99\uFE0F next to the message box',
+      'Hold to record your message, then release to send',
+      'Your bot will <b>transcribe</b> your voice and reply with text'
+    ],
+    hasVoiceReplySetup: true,
+    voiceReplySteps: [
+      'To get <b>voice replies back</b>, go to <b>Profile \u2192 Soul</b> tab in this dashboard',
+      'Add this line to your soul.md file:',
+    ],
+    voiceReplyCode: 'When the user sends a voice message, always reply with a voice note.',
+    afterStepNote: '\uD83D\uDCAA Pro tip: Pin your bot to Telegram\u2019s home screen for instant voice access!'
   }
 };
 
@@ -103,7 +114,10 @@ function GuidePopup(props) {
     if (!inputVal.trim() || !provider) return;
     onKeySave(provider, inputVal.trim());
     setSaved(true);
-    setTimeout(function() { onClose(); }, 1800);
+    // Only auto-close for simple API key saves — telegram/voice stay open to show next steps
+    if (guide === 'apiKey') {
+      setTimeout(function() { onClose(); }, 1800);
+    }
   }
 
   var overlay = {position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:20,backdropFilter:'blur(4px)'};
@@ -149,11 +163,13 @@ function GuidePopup(props) {
         ) :
 
         React.createElement('div', null,
-          React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
-            g.steps.map(function(s,i){return React.createElement('li',{key:i,style:{paddingLeft:4,marginBottom:4},dangerouslySetInnerHTML:{__html:s}});})),
 
-          // Prominent inline input for Telegram token
-          g.hasInput ? React.createElement('div', {style:{marginTop:20,padding:20,borderRadius:14,
+          // ── Pre-save: show setup steps (not for voice — it has its own layout) ──
+          !saved && guide !== 'voice' ? React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
+            g.steps.map(function(s,i){return React.createElement('li',{key:i,style:{paddingLeft:4,marginBottom:4},dangerouslySetInnerHTML:{__html:s}});})) : null,
+
+          // ── Inline input for Telegram token ──
+          g.hasInput && !saved ? React.createElement('div', {style:{marginTop:20,padding:20,borderRadius:14,
             background:'linear-gradient(135deg, rgba(255,180,60,0.1), rgba(255,120,0,0.05))',
             border:'2px solid rgba(255,180,60,0.35)'}},
             React.createElement('div', {style:{fontSize:14,fontWeight:800,marginBottom:12,color:'var(--text)',display:'flex',alignItems:'center',gap:8}},
@@ -169,29 +185,81 @@ function GuidePopup(props) {
                 disabled:!inputVal.trim()||saving,
                 style:{padding:'14px 28px',borderRadius:10,fontWeight:800,fontSize:15,border:'none',
                   cursor:inputVal.trim()&&!saving?'pointer':'default',
-                  background:saved?'var(--green)':inputVal.trim()?'var(--accent)':'var(--border)',
-                  color:saved?'#fff':inputVal.trim()?'#1a1a1a':'var(--muted)',transition:'all 0.2s'}},
-                saved ? '\u2713 Saved!' : saving ? '...' : 'Save')),
-            saved && g.afterSaveNote ? React.createElement('div', {style:{marginTop:14,padding:14,borderRadius:10,
-              background:'rgba(80,200,120,0.1)',border:'1px solid rgba(80,200,120,0.2)',fontSize:13,color:'var(--green)',lineHeight:1.6}},
-              '\u2713 ', g.afterSaveNote,
-              guide === 'telegram' ? React.createElement('div',{style:{marginTop:8,fontSize:12,color:'var(--dim)'}},
-                'Open your bot in Telegram and send a message \u2014 your AI will reply!') : null) : null
+                  background:inputVal.trim()?'var(--accent)':'var(--border)',
+                  color:inputVal.trim()?'#1a1a1a':'var(--muted)',transition:'all 0.2s'}},
+                saving ? '\u23F3 Saving...' : 'Save & Connect'))
           ) : null,
 
-          guide === 'telegram' ? React.createElement('div', {style:{marginTop:14,padding:12,borderRadius:10,
+          // ── Post-save: show activation steps (Telegram) ──
+          saved && g.postSaveSteps ? React.createElement('div', {style:{marginTop:4}},
+            React.createElement('div', {style:{fontSize:15,fontWeight:800,color:'var(--green)',marginBottom:16,display:'flex',alignItems:'center',gap:8}},
+              '\u2705 Token Saved Successfully!'),
+            React.createElement('div', {style:{fontSize:14,fontWeight:700,color:'var(--text)',marginBottom:12}},
+              'Now activate your bot:'),
+            g.postSaveSteps.map(function(step, i){
+              return React.createElement('div', {key:i, style:{display:'flex',gap:10,alignItems:'flex-start',
+                padding:'10px 14px',marginBottom:6,borderRadius:10,
+                background: i === 0 ? 'rgba(80,200,120,0.08)' : 'var(--bg)',
+                border: i === 0 ? '1px solid rgba(80,200,120,0.2)' : '1px solid transparent'}},
+                React.createElement('span', {style:{fontSize:18,flexShrink:0,marginTop:1}}, step.icon),
+                React.createElement('span', {style:{fontSize:13,color: i === 0 ? 'var(--green)' : 'var(--dim)',lineHeight:1.6},
+                  dangerouslySetInnerHTML:{__html:step.text}}));
+            })
+          ) : null,
+
+          // ── Post-save: non-telegram guides with afterSaveNote ──
+          saved && !g.postSaveSteps && g.afterSaveNote ? React.createElement('div', {style:{marginTop:14,padding:14,borderRadius:10,
+            background:'rgba(80,200,120,0.1)',border:'1px solid rgba(80,200,120,0.2)',fontSize:13,color:'var(--green)',lineHeight:1.6}},
+            '\u2713 ', g.afterSaveNote) : null,
+
+          // ── Voice guide: special layout with code block ──
+          guide === 'voice' ? React.createElement('div', null,
+            React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
+              g.steps.map(function(s,i){return React.createElement('li',{key:i,style:{paddingLeft:4,marginBottom:4},dangerouslySetInnerHTML:{__html:s}});})),
+            g.hasVoiceReplySetup ? React.createElement('div', {style:{marginTop:20,padding:18,borderRadius:14,
+              background:'linear-gradient(135deg, rgba(160,120,255,0.1), rgba(100,60,200,0.05))',
+              border:'2px solid rgba(160,120,255,0.3)'}},
+              React.createElement('div', {style:{fontSize:14,fontWeight:800,color:'var(--text)',marginBottom:12}},
+                '\uD83C\uDF99\uFE0F Want voice replies back?'),
+              React.createElement('ol', {style:{margin:'0 0 14px',paddingLeft:22,fontSize:13,lineHeight:2,color:'var(--dim)'}},
+                g.voiceReplySteps.map(function(s,i){return React.createElement('li',{key:i,dangerouslySetInnerHTML:{__html:s}});})),
+              React.createElement('div', {style:{padding:'12px 16px',borderRadius:8,background:'var(--bg)',border:'1px solid var(--border)',
+                fontFamily:'monospace',fontSize:13,color:'var(--accent)',lineHeight:1.5,cursor:'pointer',position:'relative'},
+                onClick:function(){ navigator.clipboard.writeText(g.voiceReplyCode).then(function(){}); },
+                title:'Click to copy'},
+                g.voiceReplyCode,
+                React.createElement('span',{style:{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',
+                  fontSize:11,color:'var(--dim)',background:'var(--surface)',padding:'2px 8px',borderRadius:4}},'\uD83D\uDCCB Copy'))
+            ) : null,
+            g.afterStepNote ? React.createElement('div', {style:{marginTop:14,padding:12,borderRadius:10,
+              background:'rgba(255,180,60,0.08)',border:'1px solid rgba(255,180,60,0.15)',fontSize:12,
+              color:'var(--dim)',lineHeight:1.5,textAlign:'center'}}, g.afterStepNote) : null
+          ) : null,
+
+          // ── Telegram tip (pre-save only) ──
+          guide === 'telegram' && !saved ? React.createElement('div', {style:{marginTop:14,padding:12,borderRadius:10,
             background:'rgba(255,180,60,0.08)',border:'1px solid rgba(255,180,60,0.15)',fontSize:12,color:'var(--dim)',lineHeight:1.5,textAlign:'center'}},
             '\uD83D\uDCA1 Don\'t have Telegram yet? It\'s free for iPhone, Android, Mac, Windows, and web at ',
             React.createElement('a',{href:'https://telegram.org',target:'_blank',style:{color:'var(--accent)'}},'telegram.org')) : null
         ),
 
-        React.createElement('div', {style:{display:'flex',justifyContent:'center',gap:10,marginTop:24}},
+        // ── Footer buttons ──
+        React.createElement('div', {style:{display:'flex',justifyContent:'center',gap:10,marginTop:24,flexWrap:'wrap'}},
+          // Skip button (only before save)
           !saved ? React.createElement('button', {onClick:onClose,
             style:{padding:'12px 28px',borderRadius:10,background:'transparent',color:'var(--muted)',fontSize:13,fontWeight:600,border:'1px solid var(--border)',cursor:'pointer'}},
             'Skip for now') : null,
+
+          // After telegram save: "Continue to Voice Setup" button
+          saved && guide === 'telegram' ? React.createElement('button', {onClick:function(){ props.onSwitchGuide && props.onSwitchGuide('voice'); },
+            style:{padding:'12px 28px',borderRadius:10,background:'transparent',color:'var(--accent)',fontSize:13,fontWeight:700,
+              border:'2px solid var(--accent)',cursor:'pointer',transition:'all 0.2s'}},
+            '\uD83C\uDF99\uFE0F Set Up Voice Chat \u2192') : null,
+
+          // Done / Close button
           React.createElement('button', {onClick:onClose,
             style:{padding:'12px 36px',borderRadius:10,background:saved?'var(--accent)':'var(--border)',color:saved?'#1a1a1a':'var(--text)',fontSize:14,fontWeight:700,border:'none',cursor:'pointer',transition:'all 0.2s'}},
-            saved ? '\uD83C\uDF89 Done! Start Chatting' : 'Close'))
+            saved ? (guide === 'telegram' ? '\u2705 Done \u2014 I\'ll Test It' : '\uD83C\uDF89 Done!') : 'Close'))
       )
     )
   );
@@ -425,7 +493,7 @@ function PanelChat(props) {
 
     React.createElement(SetupCards, {status:status, onGuide:setGuide}),
 
-    guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){guideDismissed.current=true; setGuide(null); loadStatus();}, onKeySave:handleKeySave, saving:saving}) : null,
+    guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){guideDismissed.current=true; setGuide(null); loadStatus();}, onKeySave:handleKeySave, saving:saving, onSwitchGuide:function(g){setGuide(g);}}) : null,
 
     React.createElement('div', {ref:scrollRef, style:{flex:1,overflowY:'auto',padding:'20px 20px 12px'}},
       messages.length === 0 ? React.createElement(ChatWelcome, {status:status, onGuide:setGuide}) : null,
