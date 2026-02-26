@@ -306,10 +306,10 @@ function PanelChat(props) {
     if (scrollRef.current) setTimeout(function(){ scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 50);
   }, [messages, sending]);
 
-  // Auto-open guide for brand new users
+  // Auto-open guide for first-run users or users without API keys
   useEffect(function() {
-    if (status && !status.chatReady && loaded && messages.length === 0) {
-      var t = setTimeout(function(){ setGuide('apiKey'); }, 800);
+    if (status && (status.firstRun || !status.chatReady) && loaded && messages.length === 0) {
+      var t = setTimeout(function(){ setGuide('apiKey'); }, 600);
       return function(){ clearTimeout(t); };
     }
   }, [status, loaded]);
@@ -345,8 +345,14 @@ function PanelChat(props) {
     api('/chat/save-key', {method:'POST', body:{provider:provider, key:key}})
       .then(function(r) {
         setSaving(false);
-        if (r.ok) { toast('API key saved! You can start chatting now.', 'success'); loadStatus(); }
-        else { toast(r.error || 'Failed to save key', 'error'); }
+        if (r.ok) {
+          toast('API key saved! You can start chatting now.', 'success');
+          // Mark setup as started (not first-run anymore)
+          api('/chat/complete-setup', {method:'POST'}).catch(function(){});
+          loadStatus();
+        } else {
+          toast(r.error || 'Failed to save key', 'error');
+        }
       })
       .catch(function() { setSaving(false); toast('Failed to save key', 'error'); });
   }

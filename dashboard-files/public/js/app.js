@@ -12,9 +12,9 @@ function App(){
     function tryLoad(){
       Promise.all([api('/profiles'),api('/system')]).then(function(r){
         setProfiles(r[0].profiles||[]);setSystem(r[1]);setLoading(false);
-        // Once connected, check first-run status
+        // Once connected, check if setup is needed
         api('/chat/status').then(function(s){
-          if(!s.chatReady){setPanel('chat');}
+          if(s.firstRun || !s.chatReady){setPanel('chat');}
         }).catch(function(){});
       }).catch(function(){
         _retries.current++;

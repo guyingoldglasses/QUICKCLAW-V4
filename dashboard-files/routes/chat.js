@@ -17,6 +17,19 @@ const st = require('../lib/state');
 
 const router = Router();
 
+// ═══ FIRST-RUN DETECTION ═══
+const SETUP_MARKER = path.join(h.DATA_DIR, '.setup-complete');
+
+router.get('/api/chat/first-run', (req, res) => {
+  const isFirstRun = !fs.existsSync(SETUP_MARKER);
+  res.json({ firstRun: isFirstRun });
+});
+
+router.post('/api/chat/complete-setup', (req, res) => {
+  try { fs.writeFileSync(SETUP_MARKER, new Date().toISOString()); } catch {}
+  res.json({ ok: true });
+});
+
 // ═══ SETUP STATUS — what's configured? ═══
 router.get('/api/chat/status', async (req, res) => {
   try {
@@ -72,13 +85,16 @@ router.get('/api/chat/status', async (req, res) => {
     else if (!gw.running) onboardingStep = 'start-gateway';
     else if (!hasTelegram) onboardingStep = 'add-telegram';
 
+    const isFirstRun = !fs.existsSync(SETUP_MARKER);
+
     res.json({
       chatReady,
       chatMethod,
       gateway: { running: gw.running, statusText: gw.statusText },
       keys: { openai: hasOpenaiKey, anthropic: hasAnthropicKey, oauth: hasOauthToken, telegram: hasTelegram },
       onboardingStep,
-      activeProfile: active ? active.id : null
+      activeProfile: active ? active.id : null,
+      firstRun: isFirstRun
     });
   } catch (e) {
     res.json({ chatReady: false, chatMethod: 'none', error: e.message, onboardingStep: 'need-api-key' });

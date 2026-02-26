@@ -1,10 +1,32 @@
 /* QuickClaw Dashboard — Dashboard Panel */
 function PanelDashboard({profiles,system,loading,onRefresh,onNav,toast}){
   var[showCreate,setShowCreate]=useState(false);var[usageData,setUsageData]=useState(null);
+  var[setupStatus,setSetupStatus]=useState(null);
   useEffect(function(){api('/usage/all').then(setUsageData).catch(function(){});},[profiles]);
+  useEffect(function(){api('/chat/status').then(setSetupStatus).catch(function(){});},[]);
   var running=profiles.filter(function(p){return p.status==='running';}).length;
   var totalCrons=profiles.reduce(function(s,p){return s+(p.cronCount||0);},0);
+
+  // Setup banner — shown when first-run or missing API keys
+  var showSetupBanner=setupStatus&&(setupStatus.firstRun||!setupStatus.chatReady);
+  var setupBanner=showSetupBanner?React.createElement('div',{
+    onClick:function(){onNav('chat');},
+    style:{padding:20,marginBottom:20,borderRadius:14,cursor:'pointer',
+      background:'linear-gradient(135deg, rgba(255,180,60,0.15), rgba(255,120,0,0.08))',
+      border:'2px solid rgba(255,180,60,0.4)',transition:'all 0.2s'}},
+    React.createElement('div',{style:{display:'flex',alignItems:'center',gap:14}},
+      React.createElement('div',{style:{fontSize:36}},'\uD83D\uDE80'),
+      React.createElement('div',{style:{flex:1}},
+        React.createElement('div',{style:{fontSize:16,fontWeight:800,color:'var(--accent)',marginBottom:4}},'Finish Setting Up Your AI Bot'),
+        React.createElement('div',{style:{fontSize:13,color:'var(--dim)',lineHeight:1.5}},
+          !setupStatus.chatReady?'Connect an API key to start chatting with your bot. It only takes a minute!':
+          !setupStatus.keys.telegram?'Your bot is ready to chat! Add Telegram for mobile access too.':
+          'Complete your bot setup for the best experience.')),
+      React.createElement('div',{style:{fontSize:14,color:'var(--accent)',fontWeight:700,whiteSpace:'nowrap'}},
+        'Go to Chat \u2192'))):null;
+
   return React.createElement('div',null,
+    setupBanner,
     showCreate?React.createElement(ProfileWizard,{profiles:profiles,onClose:function(){setShowCreate(false);},toast:toast,onCreated:onRefresh}):null,
     React.createElement('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,marginBottom:24}},
       React.createElement(StatCard,{value:profiles.length,label:'Profiles',color:'var(--accent)'}),
