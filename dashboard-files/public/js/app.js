@@ -5,12 +5,28 @@ function App(){
   var[toastMsg,setToastMsg]=useState(null);var[toastType,setToastType]=useState('info');var[mobileOpen,setMobileOpen]=useState(false);
   var[kbHelp,setKbHelp]=useState(false);
   var toast=function(msg,type){setToastMsg(msg);setToastType(type||'info');setTimeout(function(){setToastMsg(null);},3500);};
-  var loadData=async function(){setLoading(true);try{var r=await Promise.all([api('/profiles'),api('/system')]);setProfiles(r[0].profiles||[]);setSystem(r[1]);}catch(e){toast('Connection failed','error');}setLoading(false);};
-  useEffect(function(){loadData();
-    // First-run detection: if no API keys configured, go straight to Chat
-    api('/chat/status').then(function(s){
-      if(!s.chatReady){setPanel('chat');}
-    }).catch(function(){});
+  var loadData=async function(){setLoading(true);try{var r=await Promise.all([api('/profiles'),api('/system')]);setProfiles(r[0].profiles||[]);setSystem(r[1]);}catch(e){toast('Connection failed — retrying...','error');}setLoading(false);};
+  var _retries=useRef(0);
+  useEffect(function(){
+    // Initial load with auto-retry
+    function tryLoad(){
+      Promise.all([api('/profiles'),api('/system')]).then(function(r){
+        setProfiles(r[0].profiles||[]);setSystem(r[1]);setLoading(false);
+        // Once connected, check first-run status
+        api('/chat/status').then(function(s){
+          if(!s.chatReady){setPanel('chat');}
+        }).catch(function(){});
+      }).catch(function(){
+        _retries.current++;
+        if(_retries.current<=5){
+          setTimeout(tryLoad, _retries.current*1500);
+        }else{
+          setLoading(false);
+          toast('Cannot connect to dashboard server. Is it running?','error');
+        }
+      });
+    }
+    tryLoad();
   },[]);
   useEffect(function(){function h(e){if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')return;
     if(e.key==='1')nav('dashboard');else if(e.key==='c'||e.key==='C')nav('chat');else if(e.key==='2')nav('updates');else if(e.key==='3')nav('security');else if(e.key==='4')nav('antfarm');else if(e.key==='5')nav('files');else if(e.key==='6')nav('code');else if(e.key==='7')nav('timeline');else if(e.key==='8')nav('news');

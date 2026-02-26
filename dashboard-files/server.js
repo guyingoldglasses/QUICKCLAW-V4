@@ -9,6 +9,17 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+
+// Catch fatal errors early
+process.on('uncaughtException', (err) => {
+  console.error('\n❌ UNCAUGHT ERROR:', err.message);
+  console.error(err.stack);
+  console.error('\nDashboard will continue running. The error above may affect some features.\n');
+});
+process.on('unhandledRejection', (err) => {
+  console.error('\n⚠️  Unhandled promise rejection:', err?.message || err);
+});
+
 const h = require('./lib/helpers');
 const st = require('./lib/state');
 
@@ -25,18 +36,19 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '5mb' }));
 
-// Mount route modules
-app.use(require('./routes/system'));
-app.use(require('./routes/profiles'));
-app.use(require('./routes/channels'));
-app.use(require('./routes/comms'));
-app.use(require('./routes/security'));
-app.use(require('./routes/files'));
-app.use(require('./routes/news'));
-app.use(require('./routes/versions'));
-app.use(require('./routes/auth'));
-app.use(require('./routes/extras'));
-app.use(require('./routes/chat'));
+// Guaranteed health endpoint (works even if all route modules fail)
+app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// Mount route modules — with individual error protection
+const routeModules = ['system','profiles','channels','comms','security','files','news','versions','auth','extras','chat'];
+routeModules.forEach(name => {
+  try {
+    app.use(require('./routes/' + name));
+    console.log('  ✓ routes/' + name);
+  } catch (err) {
+    console.error('  ✗ routes/' + name + ' FAILED:', err.message);
+  }
+});
 
 // Profile catch-all (safety net for unmatched profile sub-routes)
 app.post('/api/profiles/:id/:action', (req, res) => res.json({ ok: true, action: req.params.action, id: req.params.id }));
@@ -58,7 +70,19 @@ app.all('/api/profiles/:id/*', (req, res) => {
 // API safety net
 app.use('/api', (req, res) => res.status(404).json({ ok: false, error: 'API endpoint not implemented', path: req.path, method: req.method }));
 
+// Global error handler for routes
+app.use((err, req, res, next) => {
+  console.error('Route error:', err.message);
+  res.status(500).json({ ok: false, error: 'Internal server error: ' + err.message });
+});
+
 // SPA catch-all
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-server.listen(h.PORT, () => console.log(`\n⚡ OpenClaw Command Center v2.5 (QuickClaw) | Port ${h.PORT}\nDashboard: http://localhost:${h.PORT}\n`));
+server.listen(h.PORT, () => {
+  console.log('');
+  console.log('⚡ OpenClaw Command Center v2.5 (QuickClaw)');
+  console.log('  Dashboard: http://localhost:' + h.PORT);
+  console.log('  Root:      ' + h.ROOT);
+  console.log('');
+});
