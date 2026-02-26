@@ -118,7 +118,7 @@ router.get('/api/profiles/:id/cron', async (req, res) => {
   const pp = st.profilePaths(req.params.id);
   const r = await h.run(`${h.cliBin()} cron list 2>/dev/null`, { env: st.profileEnvVars(req.params.id), timeout: 10000 });
   let files = [];
-  const cronDirs = [path.join(h.OPENCLAW_STATE_DIR, 'cron'), path.join(h.HOME, '.openclaw', 'cron'), path.join(pp.configDir.replace('.clawdbot', '.openclaw'), 'cron'), path.join(pp.configDir, 'cron')];
+  const cronDirs = [path.join(h.HOME, '.openclaw', 'cron'), path.join(pp.configDir.replace('.clawdbot', '.openclaw'), 'cron'), path.join(pp.configDir, 'cron')];
   cronDirs.forEach(cronDir => { try { if (fs.existsSync(cronDir)) fs.readdirSync(cronDir).filter(f => f.endsWith('.json') && f !== 'runs').forEach(f => { const j = h.readJson(path.join(cronDir, f), null); if (j && !files.some(x => x.id === j.id)) files.push(j); }); } catch {} });
   const cfg = h.readJson(pp.configJson, {}); const hb = cfg.agents?.defaults?.heartbeat;
   let heartbeat = null;

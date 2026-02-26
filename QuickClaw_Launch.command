@@ -62,60 +62,31 @@ kill_port() {
   done
 }
 
-# ─── All OpenClaw state lives on the external drive ───
-# This is the key to portability: unplug the drive → bot is fully offline
-# Plug back in → everything resumes
-OPENCLAW_HOME="$SCRIPT_DIR/openclaw-state"
-mkdir -p "$OPENCLAW_HOME/logs" "$OPENCLAW_HOME/workspace"
-
-if [[ -L "$HOME/.openclaw" ]]; then
-  # Symlink exists — verify it points to us
-  current=$(readlink "$HOME/.openclaw")
-  if [[ "$current" != "$OPENCLAW_HOME" ]]; then
-    rm "$HOME/.openclaw"
-    ln -s "$OPENCLAW_HOME" "$HOME/.openclaw"
-    info "Updated symlink: ~/.openclaw → $OPENCLAW_HOME"
-  fi
-elif [[ -d "$HOME/.openclaw" ]]; then
-  # Real directory from a previous non-QuickClaw install
-  # Migrate useful data, then replace with symlink
-  info "Found existing ~/.openclaw — migrating to external drive..."
-  # Copy config + credentials (skip large cache/log dirs)
-  for item in openclaw.json .env credentials clawdbot.json agents identity skills; do
-    src="$HOME/.openclaw/$item"
-    [[ -e "$src" ]] && cp -a "$src" "$OPENCLAW_HOME/" 2>/dev/null && info "  Migrated $item"
-  done
-  # Remove the old directory
-  rm -rf "$HOME/.openclaw"
-  ln -s "$OPENCLAW_HOME" "$HOME/.openclaw"
-  ok "Migrated and symlinked: ~/.openclaw → $OPENCLAW_HOME"
-else
-  # First install — create symlink
-  ln -s "$OPENCLAW_HOME" "$HOME/.openclaw"
-  info "Created symlink: ~/.openclaw → $OPENCLAW_HOME"
-fi
-
 # ─── Detect active profile config dir ───
-# Since ~/.openclaw is symlinked to external drive, use OPENCLAW_HOME directly
-export OPENCLAW_STATE_DIR="$OPENCLAW_HOME"
-export OPENCLAW_CONFIG_DIR="$OPENCLAW_HOME"
-export OPENCLAW_CONFIG_PATH="$OPENCLAW_HOME/openclaw.json"
-export CLAWDBOT_CONFIG_DIR="$OPENCLAW_HOME"
-CONFIG_DIR="$OPENCLAW_HOME"
-
-# Check for named profiles
+# The gateway needs OPENCLAW_CONFIG_DIR / CLAWDBOT_CONFIG_DIR to read the right config
 PROFILES_JSON="$SCRIPT_DIR/dashboard-data/profiles.json"
+CONFIG_DIR=""
 if [[ -f "$PROFILES_JSON" ]]; then
+  # Try to find active profile's config dir
   ACTIVE_ID=$(node -e "try{const p=JSON.parse(require('fs').readFileSync('$PROFILES_JSON','utf8'));const a=p.find(x=>x.active)||p[0];console.log(a?a.id:'')}catch{}" 2>/dev/null)
   if [[ -n "$ACTIVE_ID" && "$ACTIVE_ID" != "default" ]]; then
     SUFFIX="-${ACTIVE_ID#p-}"
-    for base in "$OPENCLAW_HOME$SUFFIX" "$HOME/.openclaw$SUFFIX"; do
-      [[ -d "$base" ]] && CONFIG_DIR="$base" && export OPENCLAW_CONFIG_DIR="$base" && export CLAWDBOT_CONFIG_DIR="$base" && break
+    for base in "$HOME/.openclaw$SUFFIX" "$HOME/.clawdbot$SUFFIX"; do
+      [[ -d "$base" ]] && CONFIG_DIR="$base" && break
     done
   fi
 fi
-info "State dir: $OPENCLAW_STATE_DIR"
-info "Config dir: $CONFIG_DIR"
+# Default config dirs
+if [[ -z "$CONFIG_DIR" ]]; then
+  for base in "$HOME/.openclaw" "$HOME/.clawdbot"; do
+    [[ -d "$base" ]] && CONFIG_DIR="$base" && break
+  done
+fi
+if [[ -n "$CONFIG_DIR" ]]; then
+  export OPENCLAW_CONFIG_DIR="$CONFIG_DIR"
+  export CLAWDBOT_CONFIG_DIR="$CONFIG_DIR"
+  info "Config dir: $CONFIG_DIR"
+fi
 
 # ─── Start Gateway ───
 GW_PID=""
@@ -162,10 +133,7 @@ with open('$PLIST', 'w') as f: f.write(t)
     # Add EnvironmentVariables if missing
     if ! grep -q 'EnvironmentVariables' "$PLIST"; then
       ENV_BLOCK="  <key>EnvironmentVariables</key>\n  <dict>\n    <key>PATH</key>\n    <string>$NODE_DIR:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>\n"
-      ENV_BLOCK+="    <key>OPENCLAW_STATE_DIR</key>\n    <string>$OPENCLAW_STATE_DIR</string>\n"
-      ENV_BLOCK+="    <key>OPENCLAW_CONFIG_DIR</key>\n    <string>$OPENCLAW_CONFIG_DIR</string>\n"
-      ENV_BLOCK+="    <key>OPENCLAW_CONFIG_PATH</key>\n    <string>$OPENCLAW_CONFIG_PATH</string>\n"
-      ENV_BLOCK+="    <key>CLAWDBOT_CONFIG_DIR</key>\n    <string>$CLAWDBOT_CONFIG_DIR</string>\n"
+      [[ -n "$OPENCLAW_CONFIG_DIR" ]] && ENV_BLOCK+="    <key>OPENCLAW_CONFIG_DIR</key>\n    <string>$OPENCLAW_CONFIG_DIR</string>\n    <key>CLAWDBOT_CONFIG_DIR</key>\n    <string>$CLAWDBOT_CONFIG_DIR</string>\n"
       ENV_BLOCK+="  </dict>\n"
       # Insert before closing </dict></plist>
       python3 -c "
@@ -225,7 +193,7 @@ cd "$DASHBOARD_DIR"
 DB_LOG="$LOG_DIR/dashboard.log"
 echo "--- Dashboard start: $(date) ---" >> "$DB_LOG"
 
-QUICKCLAW_ROOT="$SCRIPT_DIR" DASHBOARD_PORT="$DB_PORT" OPENCLAW_STATE_DIR="$OPENCLAW_STATE_DIR" nohup node server.js >> "$DB_LOG" 2>&1 &
+QUICKCLAW_ROOT="$SCRIPT_DIR" DASHBOARD_PORT="$DB_PORT" nohup node server.js >> "$DB_LOG" 2>&1 &
 DASH_PID=$!
 echo "$DASH_PID" > "$PID_DIR/dashboard.pid"
 

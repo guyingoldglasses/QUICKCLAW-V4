@@ -305,28 +305,14 @@ router.post('/api/chat/telegram-activate', async (req, res) => {
     await new Promise(r => setTimeout(r, 2000));
     steps[0].status = 'done';
 
-    // Step 2: Clear old telegram session data for fresh pairing
+    // Step 2: Clear old telegram session (fresh pairing)
     if (freshInstall) {
-      const ocDir = path.join(h.HOME, '.openclaw');  // symlink → external drive
-      const cleanDirs = ['telegram', 'devices', 'completions', 'cron', 'media'];
-      for (const sub of cleanDirs) {
-        const dir = path.join(ocDir, sub);
+      const sessionDirs = [
+        path.join(h.HOME, '.openclaw', 'telegram'),
+        path.join(h.HOME, '.openclaw', 'devices')
+      ];
+      for (const dir of sessionDirs) {
         try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-      }
-      // Also clear the Telegram bot's pending updates so old messages don't replay
-      const settings = st.getSettings();
-      const token = settings.telegramBotToken || '';
-      if (token) {
-        try {
-          // getUpdates with offset -1 clears the queue
-          await new Promise((resolve) => {
-            const req = https.get(`https://api.telegram.org/bot${token}/getUpdates?offset=-1&timeout=0`, { timeout: 5000 }, (resp) => {
-              let d = ''; resp.on('data', c => d += c); resp.on('end', () => resolve(d));
-            });
-            req.on('error', () => resolve(null));
-            req.on('timeout', () => { req.destroy(); resolve(null); });
-          });
-        } catch {}
       }
       steps.push({ step: 'clean', status: 'done' });
     }
@@ -667,7 +653,6 @@ router.post('/api/chat/telegram-diagnose', async (req, res) => {
     // 4. Recent gateway logs — check BOTH QuickClaw log dir AND OpenClaw's own log dir
     const logSources = [
       path.join(h.LOG_DIR, 'gateway.log'),
-      path.join(h.OPENCLAW_STATE_DIR, 'logs', 'gateway.log'),
       path.join(h.HOME, '.openclaw', 'logs', 'gateway.log'),
       path.join(h.HOME, '.clawdbot', 'logs', 'gateway.log')
     ];
