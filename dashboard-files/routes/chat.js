@@ -479,6 +479,26 @@ router.post('/api/chat/telegram-diagnose', async (req, res) => {
       } catch { results.tokenLocations.credentials = false; }
     }
 
+    // 2b. THE REAL CONFIG: ~/.openclaw/openclaw.json (what the gateway actually reads)
+    try {
+      const ocPath = st.openclawConfigPath();
+      const oc = h.readJson(ocPath, {});
+      const ocToken = oc.channels?.telegram?.botToken || '';
+      const ocEnabled = !!oc.channels?.telegram?.enabled;
+      const ocPluginEnabled = !!oc.plugins?.entries?.telegram?.enabled;
+      results.tokenLocations.openclawJson = !!ocToken;
+      results.tokenLocations.ocTelegramEnabled = ocEnabled;
+      results.tokenLocations.ocPluginEnabled = ocPluginEnabled;
+      if (ocToken && !foundToken) foundToken = ocToken;
+      // This is the critical check — if openclaw.json has enabled:false, nothing will work
+      if (!ocEnabled) {
+        results.criticalIssue = 'Telegram is DISABLED in openclaw.json (the file the gateway reads). Token is present but channels.telegram.enabled = false.';
+      }
+      if (!ocPluginEnabled) {
+        results.criticalIssue = (results.criticalIssue || '') + ' Telegram PLUGIN is also disabled in openclaw.json.';
+      }
+    } catch { results.tokenLocations.openclawJson = false; }
+
     // 3. Validate token with Telegram API (getMe)
     if (foundToken) {
       try {
@@ -581,6 +601,9 @@ router.post('/api/chat/telegram-diagnose', async (req, res) => {
     }
 
     // 5. Build suggestions
+    if (results.criticalIssue) {
+      results.suggestions.push('⚠️ CRITICAL: ' + results.criticalIssue);
+    }
     if (!results.gateway.running) {
       results.suggestions.push('Gateway is NOT running. Try restarting it from the Dashboard tab, or click "Restart Gateway" below.');
     }

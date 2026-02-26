@@ -211,8 +211,16 @@ function writeOpenclawTelegramToken(token) {
   const p = openclawConfigPath();
   if (!fs.existsSync(p)) return { ok: false, error: `Config not found: ${p}` };
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
-  cfg.channels = cfg.channels || {}; cfg.channels.telegram = cfg.channels.telegram || {};
+  // Set token AND enabled in channels.telegram
+  cfg.channels = cfg.channels || {};
+  cfg.channels.telegram = cfg.channels.telegram || {};
   cfg.channels.telegram.botToken = token;
+  cfg.channels.telegram.enabled = true;
+  // Also enable in plugins.entries.telegram
+  cfg.plugins = cfg.plugins || {};
+  cfg.plugins.entries = cfg.plugins.entries || {};
+  cfg.plugins.entries.telegram = cfg.plugins.entries.telegram || {};
+  cfg.plugins.entries.telegram.enabled = true;
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
   return { ok: true, path: p };
 }
@@ -237,7 +245,19 @@ function applySettingsToConfigFile() {
 
 // ═══ COMPREHENSIVE TELEGRAM SAVE — writes token to ALL config locations ═══
 function writeTelegramTokenEverywhere(token) {
-  const results = { settings: false, env: false, configJson: false, openclawJson: false, yamlConfig: false };
+  const results = { settings: false, env: false, configJson: false, openclawJson: false, yamlConfig: false, cliAdd: false };
+
+  // 0. PRIMARY: Use OpenClaw CLI to properly register the channel
+  //    This is the official way — it writes to openclaw.json correctly
+  try {
+    const cliResult = h.runSync(
+      `${h.cliBin()} channels add --channel telegram --token "${token}"`,
+      { cwd: h.INSTALL_DIR, timeout: 10000 }
+    );
+    results.cliAdd = cliResult.ok;
+    if (cliResult.ok) console.log('✓ openclaw channels add succeeded');
+    else console.log('⚠ openclaw channels add output:', cliResult.output?.slice(0, 200));
+  } catch (e) { console.log('⚠ openclaw channels add failed:', e.message?.slice(0, 100)); }
 
   // 1. Dashboard settings.json
   try { saveSettings({ telegramBotToken: token }); results.settings = true; } catch {}
@@ -259,7 +279,7 @@ function writeTelegramTokenEverywhere(token) {
     }
   } catch {}
 
-  // 3. Profile clawdbot.json (the main config OpenClaw reads)
+  // 3. Profile clawdbot.json (legacy — some flows still read this)
   try {
     const profiles = getProfiles();
     const active = profiles.find(p => p.active) || profiles[0];
@@ -271,7 +291,6 @@ function writeTelegramTokenEverywhere(token) {
         if (!cfg.channels.telegram) cfg.channels.telegram = {};
         cfg.channels.telegram.botToken = token;
         cfg.channels.telegram.enabled = true;
-        // Also enable telegram plugin if plugins section exists
         if (!cfg.plugins) cfg.plugins = {};
         if (!cfg.plugins.entries) cfg.plugins.entries = {};
         if (!cfg.plugins.entries.telegram) cfg.plugins.entries.telegram = {};
@@ -282,7 +301,8 @@ function writeTelegramTokenEverywhere(token) {
     }
   } catch {}
 
-  // 4. ~/.openclaw/openclaw.json (if it exists)
+  // 4. ~/.openclaw/openclaw.json — THE file the gateway actually reads
+  //    The CLI (step 0) should handle this, but we do it manually too as insurance
   try { const r = writeOpenclawTelegramToken(token); results.openclawJson = r.ok || false; } catch {}
 
   // 5. YAML config (default.yaml)
