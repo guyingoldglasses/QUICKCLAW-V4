@@ -14,14 +14,14 @@ const router = Router();
 // ═══ AUTH / OAUTH ═══
 router.get('/api/profiles/:id/auth', (req, res) => {
   const pp = st.profilePaths(req.params.id);
-  const st = st.getSettings();
+  const settings = st.getSettings();
   const env = fs.existsSync(pp.envPath) ? h.readEnv(pp.envPath) : {};
-  const hasApiKey = !!(env.OPENAI_API_KEY || st.openaiApiKey);
-  const hasOAuthToken = !!(env.OPENAI_OAUTH_TOKEN || env.OPENAI_CODEX_TOKEN || st.openaiOAuthEnabled);
-  const oauthExpiry = env.OPENAI_OAUTH_EXPIRY || env.OPENAI_CODEX_EXPIRY || st.openaiOAuthExpiry || null;
+  const hasApiKey = !!(env.OPENAI_API_KEY || settings.openaiApiKey);
+  const hasOAuthToken = !!(env.OPENAI_OAUTH_TOKEN || env.OPENAI_CODEX_TOKEN || settings.openaiOAuthEnabled);
+  const oauthExpiry = env.OPENAI_OAUTH_EXPIRY || env.OPENAI_CODEX_EXPIRY || settings.openaiOAuthExpiry || null;
   const envMethod = env.OPENAI_AUTH_METHOD || null;
   const method = envMethod || (hasOAuthToken ? 'codex-oauth' : (hasApiKey ? 'api-key' : 'none'));
-  res.json({ method, hasApiKey, hasOAuthToken, oauthExpiry, oauthValid: hasOAuthToken && (!oauthExpiry || new Date(oauthExpiry) > new Date()), oauthConnectedAt: st.openaiOAuthConnectedAt || null, openai: { oauthEnabled: hasOAuthToken, hasApiKey }, anthropic: { hasApiKey: !!st.anthropicApiKey } });
+  res.json({ method, hasApiKey, hasOAuthToken, oauthExpiry, oauthValid: hasOAuthToken && (!oauthExpiry || new Date(oauthExpiry) > new Date()), oauthConnectedAt: settings.openaiOAuthConnectedAt || null, openai: { oauthEnabled: hasOAuthToken, hasApiKey }, anthropic: { hasApiKey: !!settings.anthropicApiKey } });
 });
 
 const oauthSessions = {};

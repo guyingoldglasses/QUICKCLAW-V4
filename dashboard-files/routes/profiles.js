@@ -113,7 +113,7 @@ router.post('/api/profiles/:id/env/set', (req, res) => {
   if (fs.existsSync(pp.envPath)) {
     const v = h.readEnv(pp.envPath); v[key] = value; h.writeEnv(pp.envPath, v);
   } else {
-    const st = st.getProfileEnvStore(); st[req.params.id] = st[req.params.id] || {}; st[req.params.id][key] = value; st.saveProfileEnvStore(st);
+    const store = st.getProfileEnvStore(); store[req.params.id] = store[req.params.id] || {}; store[req.params.id][key] = value; st.saveProfileEnvStore(store);
   }
   res.json({ ok: true });
 });
@@ -123,7 +123,7 @@ router.delete('/api/profiles/:id/env/:key', (req, res) => {
   if (fs.existsSync(pp.envPath)) {
     const v = h.readEnv(pp.envPath); delete v[req.params.key]; h.writeEnv(pp.envPath, v);
   } else {
-    const st = st.getProfileEnvStore(); if (st[req.params.id]) delete st[req.params.id][req.params.key]; st.saveProfileEnvStore(st);
+    const store = st.getProfileEnvStore(); if (store[req.params.id]) delete store[req.params.id][req.params.key]; st.saveProfileEnvStore(store);
   }
   res.json({ ok: true });
 });
@@ -157,10 +157,10 @@ router.post('/api/profiles/:id/env/upload', (req, res) => {
     }
   }
   // Fall back to dashboard store
-  const st = st.getProfileEnvStore(); st[req.params.id] = st[req.params.id] || {};
+  const store = st.getProfileEnvStore(); store[req.params.id] = store[req.params.id] || {};
   let keysAdded = 0;
-  content.split('\n').forEach(l => { const t = l.trim(); if (!t || t.startsWith('#') || !t.includes('=')) return; const idx = t.indexOf('='); const k = t.slice(0, idx).trim(); if (!k) return; st[req.params.id][k] = t.slice(idx + 1); keysAdded++; });
-  st.saveProfileEnvStore(st);
+  content.split('\n').forEach(l => { const t = l.trim(); if (!t || t.startsWith('#') || !t.includes('=')) return; const idx = t.indexOf('='); const k = t.slice(0, idx).trim(); if (!k) return; store[req.params.id][k] = t.slice(idx + 1); keysAdded++; });
+  st.saveProfileEnvStore(store);
   res.json({ ok: true, keysAdded });
 });
 
@@ -188,8 +188,8 @@ router.get('/api/profiles/:id/env/download', (req, res) => {
 });
 
 router.get('/api/env/download-all', (req, res) => {
-  const st = st.getProfileEnvStore();
-  const payload = { exportedAt: new Date().toISOString(), profiles: st };
+  const store = st.getProfileEnvStore();
+  const payload = { exportedAt: new Date().toISOString(), profiles: store };
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', 'attachment; filename="all-profile-env.json"');
   res.send(JSON.stringify(payload, null, 2));
@@ -209,18 +209,18 @@ router.get('/api/env/download-all', (req, res) => {
 router.get('/api/profiles/:id/skills', (req, res) => {
   const pp = st.profilePaths(req.params.id);
   const sd = path.join(pp.workspace, 'skills');
-  const st = st.getSkillStates(pp);
+  const states = st.getSkillStates(pp);
   try {
     const sk = fs.readdirSync(sd).filter(f => { try { return fs.statSync(path.join(sd, f)).isDirectory(); } catch { return false; } }).map(n => {
       let m = {}; const mf = path.join(sd, n, 'skill.json'); if (fs.existsSync(mf)) m = h.readJson(mf, {});
-      return { name: n, description: m.description || '', enabled: st[n] !== false };
+      return { name: n, description: m.description || '', enabled: states[n] !== false };
     });
     res.json({ skills: sk });
   } catch { res.json({ skills: st.getSkills() }); }
 });
 router.post('/api/profiles/:id/skills/:skill/toggle', (req, res) => {
   const pp = st.profilePaths(req.params.id);
-  const { enabled } = req.body; const st = st.getSkillStates(pp); st[req.params.skill] = enabled; st.saveSkillStates(pp, st);
+  const { enabled } = req.body; const states = st.getSkillStates(pp); states[req.params.skill] = enabled; st.saveSkillStates(pp, states);
   const ap = path.join(pp.workspace, 'skills', req.params.skill), dp = ap + '.disabled';
   if (enabled && fs.existsSync(dp) && !fs.existsSync(ap)) fs.renameSync(dp, ap);
   else if (!enabled && fs.existsSync(ap)) fs.renameSync(ap, dp);

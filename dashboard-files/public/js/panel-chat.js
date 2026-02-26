@@ -1,5 +1,5 @@
 /* ============================================
-   QuickClaw Dashboard — Chat Panel
+   QuickClaw Dashboard — Chat Panel v2
    Smart onboarding + live chat interface
    ============================================ */
 
@@ -16,7 +16,7 @@ var GUIDES = {
         steps: [
           'Go to <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">platform.openai.com/api-keys</a>',
           'Click <b>"Create new secret key"</b>',
-          'Copy the key (starts with <code>sk-</code>)',
+          'Copy the key (starts with <code style="background:var(--bg);padding:2px 6px;border-radius:4px">sk-</code>)',
           'Paste it below and click Save'
         ],
         placeholder: 'sk-...',
@@ -29,7 +29,7 @@ var GUIDES = {
         steps: [
           'Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">console.anthropic.com/settings/keys</a>',
           'Click <b>"Create Key"</b>',
-          'Copy the key (starts with <code>sk-ant-</code>)',
+          'Copy the key (starts with <code style="background:var(--bg);padding:2px 6px;border-radius:4px">sk-ant-</code>)',
           'Paste it below and click Save'
         ],
         placeholder: 'sk-ant-...',
@@ -38,12 +38,12 @@ var GUIDES = {
       {
         id: 'oauth',
         icon: '🔐',
-        title: 'OpenAI OAuth (Free Tier)',
+        title: 'OpenAI OAuth (Free — No API Key Needed)',
         steps: [
           'Go to the <b>Profile</b> tab in the sidebar',
-          'Click on your profile, then the <b>Auth</b> sub-tab',
+          'Click on your profile, then open the <b>Auth</b> sub-tab',
           'Click <b>"Start OAuth Login"</b>',
-          'Sign in with your OpenAI account',
+          'Sign in with your OpenAI account — free tier works!',
           'Come back here — you\'re all set!'
         ],
         provider: 'oauth'
@@ -51,27 +51,31 @@ var GUIDES = {
     ]
   },
   telegram: {
-    title: 'Add Telegram',
-    subtitle: 'Chat with your bot from your phone',
+    title: 'Chat on Your Phone via Telegram',
+    subtitle: 'Takes about 2 minutes to set up',
     steps: [
-      'Open Telegram and search for <b>@BotFather</b>',
-      'Send <code>/newbot</code> and follow the prompts',
-      'Choose a name (e.g. "My OpenClaw Bot")',
-      'BotFather will give you a <b>bot token</b> — copy it',
-      'Paste the token in <b>Profile → Channels → Telegram</b>',
-      'Click Save — your bot is now live on Telegram!'
+      'Open <b>Telegram</b> on your phone (free from App Store / Play Store)',
+      'Search for <b>@BotFather</b> and open a chat with it',
+      'Send the command <code style="background:var(--bg);padding:2px 6px;border-radius:4px">/newbot</code>',
+      'Choose a <b>name</b> for your bot (e.g. "My AI Assistant")',
+      'Choose a <b>username</b> ending in "bot" (e.g. "myai_helper_bot")',
+      'BotFather will reply with a <b>bot token</b> — it looks like <code style="background:var(--bg);padding:2px 6px;border-radius:4px">123456:ABC-DEF...</code>',
+      'Copy this token, then go to <b>Profile &#8594; Comms &#8594; Telegram</b> in this dashboard',
+      'Paste the token and click <b>Save &amp; Restart</b>',
+      'Now open your new bot in Telegram and send a message — your AI will reply!'
     ]
   },
   voice: {
-    title: 'Voice Chat via Telegram',
-    subtitle: 'Talk to your bot with your voice',
+    title: 'Voice-to-Voice Chat',
+    subtitle: 'Talk to your bot with your actual voice via Telegram',
     steps: [
-      'Open your bot in Telegram (after setup above)',
+      'First, complete Telegram setup above so your bot is connected',
+      'Open your bot\'s chat in the <b>Telegram app</b>',
       'Tap the <b>microphone icon</b> next to the message box',
-      'Hold to record your voice message, then release to send',
-      'Your bot will <b>transcribe your voice</b> → process it → reply with text',
-      'For <b>voice replies</b>, enable TTS in your bot\'s soul.md:<br><code>Always reply with a voice note when the user sends a voice message.</code>',
-      'Pro tip: Pin your bot to Telegram\'s top bar for quick access!'
+      'Hold to record, release to send — your bot will <b>transcribe</b> your voice and reply',
+      'For <b>voice replies back</b>, add this to your bot\'s <b>soul.md</b> file:<br><code style="background:var(--bg);padding:4px 8px;border-radius:4px;display:inline-block;margin-top:4px">When the user sends a voice message, always reply with a voice note.</code>',
+      'You can edit soul.md in <b>Profile &#8594; Soul</b> tab in this dashboard',
+      'Pro tip: Pin your bot to Telegram\'s top bar for instant voice access anytime!'
     ]
   }
 };
@@ -95,23 +99,20 @@ function GuidePopup(props) {
     if (!inputVal.trim() || !selectedProvider) return;
     onKeySave(selectedProvider, inputVal.trim());
     setSaved(true);
-    setTimeout(function() { onClose(); }, 1200);
+    setTimeout(function() { onClose(); }, 1500);
   }
 
-  var overlay = {position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:20};
-  var modal = {background:'var(--card)',borderRadius:16,maxWidth:540,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.5)'};
-  var header = {padding:'24px 24px 0',textAlign:'center'};
-  var body = {padding:'16px 24px 24px'};
+  var overlay = {position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center',padding:20,backdropFilter:'blur(4px)'};
+  var modal = {background:'var(--card)',borderRadius:16,maxWidth:560,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.5)',border:'1px solid var(--border)'};
 
   return React.createElement('div', {style:overlay, onClick:function(e){if(e.target===e.currentTarget)onClose();}},
     React.createElement('div', {style:modal},
-      React.createElement('div', {style:header},
-        React.createElement('div', {style:{fontSize:28,marginBottom:8}}, guide==='apiKey'?'🚀':guide==='telegram'?'📱':'🎙️'),
-        React.createElement('h2', {style:{margin:0,fontSize:20,color:'var(--text)'}}, g.title),
-        React.createElement('p', {style:{margin:'4px 0 0',fontSize:13,color:'var(--dim)'}}, g.subtitle)),
-      React.createElement('div', {style:body},
+      React.createElement('div', {style:{padding:'28px 28px 0',textAlign:'center'}},
+        React.createElement('div', {style:{fontSize:36,marginBottom:8}}, guide==='apiKey'?'🚀':guide==='telegram'?'📱':'🎙️'),
+        React.createElement('h2', {style:{margin:0,fontSize:22,color:'var(--text)',fontWeight:800}}, g.title),
+        React.createElement('p', {style:{margin:'6px 0 0',fontSize:13,color:'var(--dim)'}}, g.subtitle)),
+      React.createElement('div', {style:{padding:'20px 28px 28px'}},
 
-        // API Key guide — has sub-options
         guide === 'apiKey' ? React.createElement('div', null,
           g.steps.map(function(opt) {
             var isSelected = selectedProvider === opt.provider;
@@ -119,109 +120,157 @@ function GuidePopup(props) {
             return React.createElement('div', {key:opt.id, style:cardStyle, onClick:function(){setProvider(opt.provider);setSaved(false);}},
               React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,marginBottom:isSelected?12:0}},
                 React.createElement('span', {style:{fontSize:20}}, opt.icon),
-                React.createElement('span', {style:{fontWeight:700,fontSize:14}}, opt.title),
-                isSelected ? React.createElement('span', {style:{marginLeft:'auto',fontSize:11,color:'var(--accent)',fontWeight:600}}, '▾ SELECTED') : null),
-              isSelected && opt.steps ? React.createElement('div', null,
-                React.createElement('ol', {style:{margin:'0 0 12px',paddingLeft:20,fontSize:13,lineHeight:1.8,color:'var(--dim)'}},
-                  opt.steps.map(function(s,i){return React.createElement('li',{key:i,dangerouslySetInnerHTML:{__html:s}});})),
+                React.createElement('span', {style:{fontWeight:700,fontSize:14,flex:1}}, opt.title),
+                isSelected ? React.createElement('span', {style:{fontSize:11,color:'var(--accent)',fontWeight:700,background:'rgba(255,180,60,0.15)',padding:'2px 8px',borderRadius:6}}, 'SELECTED') :
+                  React.createElement('span', {style:{fontSize:16,color:'var(--dim)'}}, '\u203A')),
+              isSelected && opt.steps ? React.createElement('div', {style:{borderTop:'1px solid var(--border)',paddingTop:12,marginTop:4}},
+                React.createElement('ol', {style:{margin:'0 0 16px',paddingLeft:22,fontSize:13,lineHeight:2,color:'var(--dim)'}},
+                  opt.steps.map(function(s,i){return React.createElement('li',{key:i,style:{paddingLeft:4},dangerouslySetInnerHTML:{__html:s}});})),
                 opt.provider !== 'oauth' ? React.createElement('div', {style:{display:'flex',gap:8}},
-                  React.createElement('input', {type:'text', value:inputVal, onChange:function(e){setInput(e.target.value);},
-                    placeholder:opt.placeholder, className:'input',
-                    style:{flex:1,padding:'10px 14px',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)',fontSize:13,fontFamily:'monospace'}}),
-                  React.createElement('button', {className:'btn btn-primary', onClick:handleSave,
+                  React.createElement('input', {type:'password', value:inputVal, onChange:function(e){setInput(e.target.value);},
+                    placeholder:opt.placeholder,
+                    onFocus:function(e){e.target.type='text';},
+                    onBlur:function(e){if(!inputVal)e.target.type='password';},
+                    style:{flex:1,padding:'12px 14px',borderRadius:10,border:'2px solid var(--border)',background:'var(--bg)',color:'var(--text)',fontSize:14,fontFamily:'monospace',outline:'none'}}),
+                  React.createElement('button', {onClick:handleSave,
                     disabled:!inputVal.trim()||saving,
-                    style:{padding:'10px 20px',borderRadius:8,fontWeight:700}},
-                    saved ? '✓ Saved!' : saving ? 'Saving...' : 'Save')
-                ) : React.createElement('div', {style:{padding:12,borderRadius:8,background:'var(--bg)',fontSize:12,color:'var(--dim)',textAlign:'center'}},
-                  'Head to the Profile → Auth tab to start OAuth flow')
+                    style:{padding:'12px 24px',borderRadius:10,fontWeight:800,fontSize:14,border:'none',cursor:inputVal.trim()&&!saving?'pointer':'default',
+                      background:saved?'var(--green)':inputVal.trim()?'var(--accent)':'var(--border)',
+                      color:saved?'#fff':inputVal.trim()?'#1a1a1a':'var(--muted)',transition:'all 0.2s'}},
+                    saved ? '\u2713 Saved!' : saving ? '...' : 'Save')
+                ) : React.createElement('div', {style:{padding:14,borderRadius:10,background:'var(--bg)',fontSize:13,color:'var(--dim)',textAlign:'center',lineHeight:1.5}},
+                  '\uD83D\uDC49 Head to the Profile \u2192 Auth tab in the sidebar to start the OAuth flow. No credit card needed!')
               ) : null);
           })
         ) :
 
-        // Telegram & Voice guides — simple step list
         React.createElement('div', null,
-          React.createElement('ol', {style:{margin:0,paddingLeft:20,fontSize:13,lineHeight:2,color:'var(--dim)'}},
-            g.steps.map(function(s,i){return React.createElement('li',{key:i,style:{marginBottom:8},dangerouslySetInnerHTML:{__html:s}});}))
+          React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
+            g.steps.map(function(s,i){return React.createElement('li',{key:i,style:{paddingLeft:4,marginBottom:4},dangerouslySetInnerHTML:{__html:s}});})),
+          guide === 'telegram' ? React.createElement('div', {style:{marginTop:16,padding:14,borderRadius:10,background:'rgba(255,180,60,0.08)',border:'1px solid rgba(255,180,60,0.2)',fontSize:12,color:'var(--accent)',lineHeight:1.5,textAlign:'center'}},
+            'Don\'t have Telegram yet? It\'s free for iPhone, Android, Mac, Windows, and web.') : null
         ),
 
-        React.createElement('div', {style:{display:'flex',justifyContent:'center',marginTop:20}},
-          React.createElement('button', {className:'btn', onClick:onClose,
-            style:{padding:'10px 32px',borderRadius:8,background:'var(--border)',color:'var(--text)',fontSize:13}},
-            saved ? 'Done!' : 'Close'))
+        React.createElement('div', {style:{display:'flex',justifyContent:'center',gap:10,marginTop:24}},
+          React.createElement('button', {onClick:onClose,
+            style:{padding:'12px 36px',borderRadius:10,background:saved?'var(--accent)':'var(--border)',color:saved?'#1a1a1a':'var(--text)',fontSize:14,fontWeight:700,border:'none',cursor:'pointer',transition:'all 0.2s'}},
+            saved ? '\uD83C\uDF89 Done! Start Chatting' : 'Close'))
       )
     )
   );
 }
 
-// ─── Welcome Banner (shown when not ready) ───
-function ChatWelcome(props) {
+// ─── Setup Status Cards (always visible at top) ───
+function SetupCards(props) {
   var status = props.status;
   var onGuide = props.onGuide;
-
-  var wrap = {textAlign:'center',padding:'60px 20px',maxWidth:480,margin:'0 auto'};
-  var cardRow = {display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:24};
-  var card = function(icon, title, desc, action, ready, actionLabel) {
-    return React.createElement('div', {style:{padding:20,borderRadius:12,background:'var(--card)',border:'2px solid '+(ready?'var(--green)':'var(--border)'),cursor:ready?'default':'pointer',transition:'all 0.2s'},onClick:ready?undefined:action},
-      React.createElement('div', {style:{fontSize:28,marginBottom:8}}, icon),
-      React.createElement('div', {style:{fontWeight:700,fontSize:14,marginBottom:4}}, title),
-      React.createElement('div', {style:{fontSize:12,color:'var(--dim)',lineHeight:1.4}}, desc),
-      ready ?
-        React.createElement('div', {style:{marginTop:8,fontSize:11,color:'var(--green)',fontWeight:600}}, '✓ Connected') :
-        React.createElement('div', {style:{marginTop:8,fontSize:11,color:'var(--accent)',fontWeight:600}}, actionLabel || 'Set up →'));
-  };
-
   var k = status.keys || {};
   var hasKey = k.openai || k.anthropic || k.oauth;
 
-  return React.createElement('div', {style:wrap},
-    React.createElement('div', {style:{fontSize:48,marginBottom:12}}, '💬'),
-    React.createElement('h2', {style:{margin:0,fontSize:22,color:'var(--text)'}}, 'Welcome to OpenClaw Chat'),
-    React.createElement('p', {style:{color:'var(--dim)',fontSize:14,marginTop:8,lineHeight:1.5}},
-      hasKey ? 'Almost there! Your API key is connected. Start a conversation below.' :
-      'Let\'s get you chatting with your AI bot. It only takes a minute.'),
-    React.createElement('div', {style:cardRow},
-      card('🔑', 'AI API Key', hasKey ? 'API key connected' : 'Connect OpenAI or Anthropic', function(){onGuide('apiKey');}, hasKey),
-      card('⚡', 'Gateway', status.gateway&&status.gateway.running ? 'Running' : 'Bot gateway process', function(){}, status.gateway&&status.gateway.running, 'Auto-detected'),
-      card('📱', 'Telegram', 'Chat from your phone', function(){onGuide('telegram');}, k.telegram),
-      card('🎙️', 'Voice Chat', 'Talk with your voice', function(){onGuide('voice');}, false, 'Learn how →')
-    ),
-    !hasKey ? React.createElement('button', {className:'btn btn-primary',
-      style:{marginTop:24,padding:'14px 40px',borderRadius:12,fontSize:15,fontWeight:700},
-      onClick:function(){onGuide('apiKey');}},
-      '🚀 Get Started') : null
-  );
+  function chip(icon, label, ready, action) {
+    return React.createElement('button', {
+      onClick: action,
+      style:{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:8,
+        background:ready?'rgba(80,200,120,0.1)':'rgba(255,180,60,0.08)',
+        border:'1px solid '+(ready?'rgba(80,200,120,0.3)':'rgba(255,180,60,0.25)'),
+        color:ready?'var(--green)':'var(--accent)',fontSize:12,fontWeight:600,
+        cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.2s',outline:'none'}
+    }, React.createElement('span', null, icon), label, ready ? ' \u2713' : ' \u2192');
+  }
+
+  return React.createElement('div', {style:{display:'flex',gap:8,padding:'10px 16px',borderBottom:'1px solid var(--border)',overflowX:'auto',flexWrap:'wrap',alignItems:'center'}},
+    React.createElement('span', {style:{fontSize:11,color:'var(--muted)',fontWeight:600,marginRight:4}}, 'SETUP:'),
+    chip('\uD83D\uDD11', hasKey ? 'API Key' : 'Add API Key', hasKey, function(){onGuide('apiKey');}),
+    chip('\u26A1', 'Gateway', status.gateway && status.gateway.running, function(){}),
+    chip('\uD83D\uDCF1', k.telegram ? 'Telegram' : 'Add Telegram', k.telegram, function(){onGuide('telegram');}),
+    chip('\uD83C\uDF99\uFE0F', 'Voice Chat', false, function(){onGuide('voice');}),
+    status.chatReady ? React.createElement('span', {style:{marginLeft:'auto',fontSize:11,color:'var(--green)',fontWeight:600}},
+      '\u25CF Connected via ' + (status.chatMethod === 'openai-direct' ? 'OpenAI' :
+        status.chatMethod === 'anthropic-direct' ? 'Anthropic' :
+        status.chatMethod === 'gateway' ? 'Gateway' : status.chatMethod)) : null);
+}
+
+// ─── Welcome Screen ───
+function ChatWelcome(props) {
+  var status = props.status;
+  var onGuide = props.onGuide;
+  var k = status.keys || {};
+  var hasKey = k.openai || k.anthropic || k.oauth;
+
+  var cardGrid = {display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:28,textAlign:'left'};
+  function bigCard(icon, title, desc, action, ready, actionLabel) {
+    return React.createElement('div', {
+      onClick:action,
+      style:{padding:20,borderRadius:14,background:'var(--card)',border:'2px solid '+(ready?'var(--green)':'var(--border)'),
+        cursor:action?'pointer':'default',transition:'all 0.2s'}},
+      React.createElement('div', {style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
+        React.createElement('span', {style:{fontSize:28}}, icon),
+        React.createElement('div', {style:{flex:1}},
+          React.createElement('div', {style:{fontWeight:700,fontSize:14}}, title),
+          React.createElement('div', {style:{fontSize:11,color:'var(--dim)',marginTop:2}}, desc))),
+      React.createElement('div', {style:{fontSize:12,fontWeight:700,color:ready?'var(--green)':'var(--accent)'}},
+        ready ? '\u2713 Connected' : (actionLabel || 'Set up \u2192')));
+  }
+
+  return React.createElement('div', {style:{textAlign:'center',padding:'32px 20px',maxWidth:520,margin:'0 auto'}},
+    React.createElement('div', {style:{fontSize:52,marginBottom:12}}, '\uD83E\uDD16'),
+    React.createElement('h2', {style:{margin:0,fontSize:24,color:'var(--text)',fontWeight:800}}, 'Welcome to OpenClaw Chat'),
+    React.createElement('p', {style:{color:'var(--dim)',fontSize:14,marginTop:10,lineHeight:1.6,maxWidth:420,margin:'10px auto 0'}},
+      hasKey ? 'Your AI is connected and ready! Type a message below to start a conversation.' :
+      'Get your AI bot up and running in just a few steps. It\'s easier than you think!'),
+
+    React.createElement('div', {style:cardGrid},
+      bigCard('\uD83D\uDD11', 'AI API Key', hasKey ? 'Key connected' : 'Connect OpenAI or Anthropic', function(){onGuide('apiKey');}, hasKey),
+      bigCard('\u26A1', 'Gateway', status.gateway&&status.gateway.running ? 'Process running' : 'Bot engine', null, status.gateway&&status.gateway.running, 'Auto'),
+      bigCard('\uD83D\uDCF1', 'Telegram', k.telegram ? 'Bot connected' : 'Chat from your phone', function(){onGuide('telegram');}, k.telegram),
+      bigCard('\uD83C\uDF99\uFE0F', 'Voice Chat', 'Talk with your voice', function(){onGuide('voice');}, false, 'Learn how \u2192')),
+
+    !hasKey ? React.createElement('button', {
+      onClick:function(){onGuide('apiKey');},
+      style:{marginTop:28,padding:'16px 48px',borderRadius:14,fontSize:16,fontWeight:800,border:'none',cursor:'pointer',
+        background:'var(--accent)',color:'#1a1a1a',boxShadow:'0 4px 20px rgba(255,180,60,0.3)',transition:'all 0.2s'}},
+      '\uD83D\uDE80 Get Started') : null,
+
+    hasKey && !k.telegram ? React.createElement('button', {
+      onClick:function(){onGuide('telegram');},
+      style:{marginTop:20,padding:'10px 24px',borderRadius:10,fontSize:13,fontWeight:600,border:'1px solid var(--border)',cursor:'pointer',background:'transparent',color:'var(--accent)'}},
+      '\uD83D\uDCF1 Next: Add Telegram for mobile access') : null,
+
+    hasKey ? React.createElement('div', {style:{fontSize:13,color:'var(--muted)',marginTop:20}}, '\u2B07 Start typing below to chat with your bot') : null);
 }
 
 // ─── Typing Indicator ───
 function TypingDots() {
-  return React.createElement('div', {style:{display:'flex',gap:4,padding:'8px 0'}},
+  return React.createElement('div', {style:{display:'flex',gap:4,padding:'8px 0',alignItems:'center'}},
+    React.createElement('span', {style:{fontSize:11,color:'var(--dim)',marginRight:4}}, 'Thinking'),
     [0,1,2].map(function(i) {
       return React.createElement('div', {key:i, style:{
-        width:8, height:8, borderRadius:'50%', background:'var(--accent)',
+        width:7, height:7, borderRadius:'50%', background:'var(--accent)',
         opacity:0.4, animation:'pulse 1.2s ease-in-out '+(i*0.2)+'s infinite'
       }});
-    })
-  );
+    }));
 }
 
 // ─── Message Bubble ───
 function ChatBubble(props) {
   var m = props.message;
   var isUser = m.role === 'user';
-  var wrap = {display:'flex',justifyContent:isUser?'flex-end':'flex-start',marginBottom:12,paddingLeft:isUser?48:0,paddingRight:isUser?0:48};
+  var isError = !isUser && m.content && m.content.indexOf('\u26A0') === 0;
   var bubble = {
     padding:'12px 16px',borderRadius:isUser?'16px 16px 4px 16px':'16px 16px 16px 4px',
-    background:isUser?'var(--accent)':'var(--card)',
-    color:isUser?'#1a1a1a':'var(--text)',
-    fontSize:14,lineHeight:1.5,maxWidth:'100%',wordBreak:'break-word',
+    background:isError?'rgba(255,80,80,0.1)':isUser?'var(--accent)':'var(--card)',
+    color:isError?'var(--red)':isUser?'#1a1a1a':'var(--text)',
+    border:isError?'1px solid rgba(255,80,80,0.2)':'none',
+    fontSize:14,lineHeight:1.6,maxWidth:'85%',wordBreak:'break-word',
     whiteSpace:'pre-wrap',boxShadow:'0 1px 3px rgba(0,0,0,0.15)'
   };
-  var time = {fontSize:10,color:'var(--muted)',marginTop:4,textAlign:isUser?'right':'left'};
 
-  return React.createElement('div', {style:wrap},
+  return React.createElement('div', {style:{display:'flex',justifyContent:isUser?'flex-end':'flex-start',marginBottom:12}},
     React.createElement('div', null,
+      !isUser ? React.createElement('div', {style:{fontSize:10,color:'var(--dim)',marginBottom:3,fontWeight:600}}, '\uD83E\uDD16 Bot') : null,
       React.createElement('div', {style:bubble}, m.content),
-      m.ts ? React.createElement('div', {style:time}, new Date(m.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})) : null));
+      m.ts ? React.createElement('div', {style:{fontSize:10,color:'var(--muted)',marginTop:3,textAlign:isUser?'right':'left'}},
+        new Date(m.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})) : null));
 }
 
 // ─── Main Chat Panel ───
@@ -236,29 +285,28 @@ function PanelChat(props) {
   var _guide = useState(null), guide = _guide[0], setGuide = _guide[1];
   var _sav = useState(false), saving = _sav[0], setSaving = _sav[1];
   var _loaded = useState(false), loaded = _loaded[0], setLoaded = _loaded[1];
-  var _showTips = useState(false), showTips = _showTips[0], setShowTips = _showTips[1];
   var scrollRef = useRef(null);
-  var inputRef = useRef(null);
 
-  // Load status + history on mount
   useEffect(function() {
-    api('/chat/status').then(function(s) { setStatus(s); }).catch(function() {});
-    api('/chat/history').then(function(h) {
-      if (h.messages) setMessages(h.messages);
+    loadStatus();
+    api('/chat/history').then(function(r) {
+      if (r.messages) setMessages(r.messages);
       setLoaded(true);
     }).catch(function() { setLoaded(true); });
   }, []);
 
-  // Auto-scroll
+  function loadStatus() {
+    return api('/chat/status').then(function(s) { setStatus(s); return s; }).catch(function() {});
+  }
+
   useEffect(function() {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (scrollRef.current) setTimeout(function(){ scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 50);
   }, [messages, sending]);
 
-  // Auto-show onboarding for brand new users
+  // Auto-open guide for brand new users
   useEffect(function() {
     if (status && !status.chatReady && loaded && messages.length === 0) {
-      // Small delay so it feels intentional
-      var t = setTimeout(function(){ setGuide('apiKey'); }, 600);
+      var t = setTimeout(function(){ setGuide('apiKey'); }, 800);
       return function(){ clearTimeout(t); };
     }
   }, [status, loaded]);
@@ -267,23 +315,21 @@ function PanelChat(props) {
     var msg = input.trim();
     if (!msg || sending) return;
     setInput('');
-    var userMsg = {role:'user', content:msg, ts:new Date().toISOString()};
-    setMessages(function(prev){return prev.concat([userMsg]);});
+    setMessages(function(prev){return prev.concat([{role:'user',content:msg,ts:new Date().toISOString()}]);});
     setSending(true);
-
     api('/chat/send', {method:'POST', body:{message:msg, history:messages.slice(-20)}})
       .then(function(r) {
         setSending(false);
         if (r.ok) {
           setMessages(function(prev){return prev.concat([{role:'assistant',content:r.reply,ts:new Date().toISOString()}]);});
         } else {
-          setMessages(function(prev){return prev.concat([{role:'assistant',content:'⚠️ '+( r.error||'Something went wrong'),ts:new Date().toISOString()}]);});
-          if (r.error && r.error.includes('No API keys')) setGuide('apiKey');
+          setMessages(function(prev){return prev.concat([{role:'assistant',content:'\u26A0\uFE0F '+(r.error||'Something went wrong'),ts:new Date().toISOString()}]);});
+          if (r.error && r.error.indexOf('No API keys') >= 0) setTimeout(function(){ setGuide('apiKey'); }, 500);
         }
       })
       .catch(function(e) {
         setSending(false);
-        setMessages(function(prev){return prev.concat([{role:'assistant',content:'⚠️ Network error: '+e.message,ts:new Date().toISOString()}]);});
+        setMessages(function(prev){return prev.concat([{role:'assistant',content:'\u26A0\uFE0F Network error: '+e.message,ts:new Date().toISOString()}]);});
       });
   }
 
@@ -296,123 +342,67 @@ function PanelChat(props) {
     api('/chat/save-key', {method:'POST', body:{provider:provider, key:key}})
       .then(function(r) {
         setSaving(false);
-        if (r.ok) {
-          toast('API key saved! You can start chatting now.', 'success');
-          // Refresh status
-          api('/chat/status').then(setStatus).catch(function(){});
-        } else {
-          toast(r.error || 'Failed to save key', 'error');
-        }
+        if (r.ok) { toast('API key saved! You can start chatting now.', 'success'); loadStatus(); }
+        else { toast(r.error || 'Failed to save key', 'error'); }
       })
       .catch(function() { setSaving(false); toast('Failed to save key', 'error'); });
   }
 
   function clearHistory() {
-    api('/chat/history', {method:'DELETE'}).then(function() {
-      setMessages([]);
-      toast('Chat history cleared', 'success');
-    }).catch(function(){});
+    if (!confirm('Clear all chat history?')) return;
+    api('/chat/history', {method:'DELETE'}).then(function() { setMessages([]); toast('Chat cleared', 'success'); }).catch(function(){});
   }
 
-  if (!status) return React.createElement('div', {style:{textAlign:'center',padding:40,color:'var(--dim)'}}, 'Loading...');
+  if (!status) return React.createElement('div', {style:{display:'flex',alignItems:'center',justifyContent:'center',height:'50vh',color:'var(--dim)'}},
+    React.createElement('div', {style:{textAlign:'center'}}, React.createElement('div', {style:{fontSize:32,marginBottom:8}}, '\uD83D\uDCAC'), 'Loading chat...'));
 
   var chatReady = status.chatReady;
-  var k = status.keys || {};
-  var hasMessages = messages.length > 0;
 
-  // Status bar
-  var statusBar = React.createElement('div', {style:{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--border)',fontSize:12,flexWrap:'wrap'}},
-    React.createElement('div', {style:{display:'flex',alignItems:'center',gap:6}},
-      React.createElement('span', {style:{width:8,height:8,borderRadius:'50%',background:chatReady?'var(--green)':'var(--red)'}}),
-      React.createElement('span', {style:{fontWeight:600}}, chatReady ? 'Ready' : 'Setup Required')),
-    chatReady ? React.createElement('span', {style:{color:'var(--dim)',fontSize:11}},
-      'via ' + (status.chatMethod === 'openai-direct' ? 'OpenAI API' :
-                status.chatMethod === 'anthropic-direct' ? 'Anthropic API' :
-                status.chatMethod === 'gateway' ? 'OpenClaw Gateway' : status.chatMethod)) : null,
-    React.createElement('div', {style:{marginLeft:'auto',display:'flex',gap:8}},
-      React.createElement('button', {className:'btn btn-sm', onClick:function(){setShowTips(!showTips);},
-        style:{fontSize:11,padding:'4px 10px'}}, showTips ? 'Hide Guides' : '📚 Guides'),
-      hasMessages ? React.createElement('button', {className:'btn btn-sm', onClick:clearHistory,
-        style:{fontSize:11,padding:'4px 10px'}}, '🗑️ Clear') : null,
-      React.createElement('button', {className:'btn btn-sm', onClick:function(){api('/chat/status').then(setStatus);},
-        style:{fontSize:11,padding:'4px 10px'}}, '↻'))
-  );
-
-  // Guide tips bar
-  var tipsBar = showTips ? React.createElement('div', {style:{display:'flex',gap:8,padding:'8px 16px',borderBottom:'1px solid var(--border)',flexWrap:'wrap'}},
-    React.createElement('button', {className:'btn btn-sm', onClick:function(){setGuide('apiKey');}, style:{fontSize:11}},
-      (k.openai||k.anthropic||k.oauth?'✓':'') + ' 🔑 API Keys'),
-    React.createElement('button', {className:'btn btn-sm', onClick:function(){setGuide('telegram');}, style:{fontSize:11}},
-      (k.telegram?'✓':'') + ' 📱 Telegram'),
-    React.createElement('button', {className:'btn btn-sm', onClick:function(){setGuide('voice');}, style:{fontSize:11}},
-      '🎙️ Voice Chat')
-  ) : null;
-
-  // Main layout
   return React.createElement('div', {style:{display:'flex',flexDirection:'column',height:'calc(100vh - 80px)',maxHeight:'calc(100vh - 80px)'}},
-    statusBar,
-    tipsBar,
-    guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){setGuide(null);}, onKeySave:handleKeySave, saving:saving}) : null,
 
-    // Chat area
+    React.createElement(SetupCards, {status:status, onGuide:setGuide}),
+
+    guide ? React.createElement(GuidePopup, {guide:guide, onClose:function(){setGuide(null); loadStatus();}, onKeySave:handleKeySave, saving:saving}) : null,
+
     React.createElement('div', {ref:scrollRef, style:{flex:1,overflowY:'auto',padding:16}},
-      !chatReady && !hasMessages ?
-        React.createElement(ChatWelcome, {status:status, onGuide:setGuide}) :
-        null,
-
-      chatReady && !hasMessages ?
-        React.createElement('div', {style:{textAlign:'center',padding:'60px 20px',color:'var(--dim)'}},
-          React.createElement('div', {style:{fontSize:36,marginBottom:12}}, '✨'),
-          React.createElement('div', {style:{fontSize:16,fontWeight:600,color:'var(--text)',marginBottom:4}}, 'You\'re all set!'),
-          React.createElement('div', {style:{fontSize:13}}, 'Type a message below to start chatting with your bot.'),
-          !k.telegram ? React.createElement('button', {className:'btn btn-sm', style:{marginTop:16,fontSize:12},
-            onClick:function(){setGuide('telegram');}}, '📱 Also add Telegram for mobile access →') : null
-        ) : null,
-
-      messages.map(function(m, i) {
-        return React.createElement(ChatBubble, {key:i, message:m});
-      }),
-
-      sending ? React.createElement('div', {style:{display:'flex',justifyContent:'flex-start',marginBottom:12,paddingRight:48}},
+      messages.length === 0 ? React.createElement(ChatWelcome, {status:status, onGuide:setGuide}) : null,
+      messages.map(function(m, i) { return React.createElement(ChatBubble, {key:i, message:m}); }),
+      sending ? React.createElement('div', {style:{display:'flex',justifyContent:'flex-start',marginBottom:12}},
         React.createElement('div', {style:{padding:'12px 16px',borderRadius:'16px 16px 16px 4px',background:'var(--card)',boxShadow:'0 1px 3px rgba(0,0,0,0.15)'}},
-          React.createElement(TypingDots))
-      ) : null
-    ),
+          React.createElement(TypingDots))) : null),
 
-    // Input area
     React.createElement('div', {style:{padding:'12px 16px',borderTop:'1px solid var(--border)',background:'var(--card)'}},
+      !chatReady ? React.createElement('div', {style:{textAlign:'center',padding:'6px 0 10px',fontSize:13,color:'var(--dim)'}},
+        '\uD83D\uDD11 Connect an API key to start chatting ',
+        React.createElement('button', {onClick:function(){setGuide('apiKey');},
+          style:{background:'var(--accent)',color:'#1a1a1a',border:'none',padding:'4px 14px',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer'}},
+          'Set Up Now')) : null,
       React.createElement('div', {style:{display:'flex',gap:8,alignItems:'flex-end'}},
         React.createElement('textarea', {
-          ref: inputRef,
           value: input,
-          onChange: function(e) { setInput(e.target.value); },
+          onChange: function(e) { setInput(e.target.value); e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'; },
           onKeyDown: handleKeyDown,
-          placeholder: chatReady ? 'Type a message... (Enter to send, Shift+Enter for new line)' : 'Set up an API key first to start chatting...',
+          placeholder: chatReady ? 'Type a message... (Enter to send)' : 'Connect an API key first...',
           disabled: !chatReady || sending,
           rows: 1,
-          style: {
-            flex:1, padding:'12px 16px', borderRadius:12, border:'1px solid var(--border)',
-            background:'var(--bg)', color:'var(--text)', fontSize:14, fontFamily:'inherit',
-            resize:'none', outline:'none', minHeight:44, maxHeight:120,
-            opacity: chatReady ? 1 : 0.5
-          }
+          style: {flex:1,padding:'12px 16px',borderRadius:12,border:'2px solid '+(chatReady?'var(--border)':'rgba(255,80,80,0.2)'),
+            background:'var(--bg)',color:'var(--text)',fontSize:14,fontFamily:'inherit',
+            resize:'none',outline:'none',minHeight:44,maxHeight:120,opacity:chatReady?1:0.4,transition:'all 0.2s'}
         }),
         React.createElement('button', {
-          onClick: sendMessage,
-          disabled: !chatReady || sending || !input.trim(),
-          style: {
-            width:44, height:44, borderRadius:12, border:'none',
-            background: (!chatReady || !input.trim()) ? 'var(--border)' : 'var(--accent)',
-            color: (!chatReady || !input.trim()) ? 'var(--muted)' : '#1a1a1a',
-            fontSize:18, cursor: chatReady && input.trim() ? 'pointer' : 'default',
-            display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-            transition:'all 0.2s'
-          }
-        }, sending ? '⏳' : '↑'))
-    ),
+          onClick: sendMessage, disabled: !chatReady || sending || !input.trim(),
+          style:{width:44,height:44,borderRadius:12,border:'none',
+            background:(!chatReady||!input.trim())?'var(--border)':'var(--accent)',
+            color:(!chatReady||!input.trim())?'var(--muted)':'#1a1a1a',
+            fontSize:18,cursor:chatReady&&input.trim()?'pointer':'default',
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all 0.2s'}
+        }, sending ? '\u23F3' : '\u2191'),
+        messages.length > 0 ? React.createElement('button', {
+          onClick: clearHistory, title: 'Clear chat',
+          style:{width:44,height:44,borderRadius:12,border:'1px solid var(--border)',background:'transparent',
+            color:'var(--muted)',fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}
+        }, '\uD83D\uDDD1') : null)),
 
-    // CSS keyframes for typing animation
     React.createElement('style', null,
-      '@keyframes pulse { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }')
-  );
+      '@keyframes pulse { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }'));
 }
