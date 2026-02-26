@@ -62,6 +62,32 @@ kill_port() {
   done
 }
 
+# ─── Detect active profile config dir ───
+# The gateway needs OPENCLAW_CONFIG_DIR / CLAWDBOT_CONFIG_DIR to read the right config
+PROFILES_JSON="$SCRIPT_DIR/dashboard-data/profiles.json"
+CONFIG_DIR=""
+if [[ -f "$PROFILES_JSON" ]]; then
+  # Try to find active profile's config dir
+  ACTIVE_ID=$(node -e "try{const p=JSON.parse(require('fs').readFileSync('$PROFILES_JSON','utf8'));const a=p.find(x=>x.active)||p[0];console.log(a?a.id:'')}catch{}" 2>/dev/null)
+  if [[ -n "$ACTIVE_ID" && "$ACTIVE_ID" != "default" ]]; then
+    SUFFIX="-${ACTIVE_ID#p-}"
+    for base in "$HOME/.openclaw$SUFFIX" "$HOME/.clawdbot$SUFFIX"; do
+      [[ -d "$base" ]] && CONFIG_DIR="$base" && break
+    done
+  fi
+fi
+# Default config dirs
+if [[ -z "$CONFIG_DIR" ]]; then
+  for base in "$HOME/.openclaw" "$HOME/.clawdbot"; do
+    [[ -d "$base" ]] && CONFIG_DIR="$base" && break
+  done
+fi
+if [[ -n "$CONFIG_DIR" ]]; then
+  export OPENCLAW_CONFIG_DIR="$CONFIG_DIR"
+  export CLAWDBOT_CONFIG_DIR="$CONFIG_DIR"
+  info "Config dir: $CONFIG_DIR"
+fi
+
 # ─── Start Gateway ───
 GW_PID=""
 if [[ -f "$PID_DIR/gateway.pid" ]] && kill -0 "$(cat "$PID_DIR/gateway.pid" 2>/dev/null)" 2>/dev/null; then

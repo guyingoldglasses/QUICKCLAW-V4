@@ -258,14 +258,44 @@ router.post('/api/chat/save-key', async (req, res) => {
       if (!token.includes(':')) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token. It should look like 123456789:ABCdef...' });
       // Write token to ALL config locations OpenClaw might read from
       const writeResults = st.writeTelegramTokenEverywhere(token);
-      // Auto-restart gateway so it picks up the new token
+      // Auto-restart gateway so it picks up the new token (hard restart)
       let gatewayRestarted = false;
+      let restartLog = [];
       try {
-        await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-        await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+        // Graceful stop
+        try { await h.gatewayExec(`${h.gatewayStopCommand()} 2>&1`); } catch {}
+        await new Promise(r => setTimeout(r, 1500));
+        
+        // Hard kill anything on gateway ports
+        const { execSync } = require('child_process');
+        for (const port of [18789, 5000]) {
+          try {
+            const pids = execSync(`lsof -ti tcp:${port}`, { stdio: 'pipe' }).toString().trim();
+            if (pids) {
+              for (const pid of pids.split('\n').filter(Boolean)) {
+                try { process.kill(parseInt(pid), 'SIGKILL'); restartLog.push('killed:' + pid); } catch {}
+              }
+            }
+          } catch {}
+        }
+        try {
+          const pids = execSync(`pgrep -f "openclaw.*gateway" || true`, { stdio: 'pipe' }).toString().trim();
+          for (const pid of pids.split('\n').filter(Boolean)) {
+            const n = parseInt(pid);
+            if (n && n !== process.pid) { try { process.kill(n, 'SIGKILL'); } catch {} }
+          }
+        } catch {}
+        
+        await new Promise(r => setTimeout(r, 2000));
+        
+        // Fresh start
+        await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1 &`);
+        await new Promise(r => setTimeout(r, 4000));
+        
         const gw = await h.gatewayState();
         gatewayRestarted = gw.running;
-      } catch {}
+        restartLog.push('running:' + gw.running);
+      } catch (e) { restartLog.push('err:' + e.message.slice(0, 50)); }
       return res.json({
         ok: true, provider: 'telegram',
         writeResults,
@@ -547,15 +577,75 @@ router.post('/api/chat/telegram-diagnose', async (req, res) => {
   }
 });
 
-// ═══ GATEWAY RESTART (dedicated endpoint) ═══
+// ═══ GATEWAY RESTART (dedicated endpoint — hard restart) ═══
 router.post('/api/chat/gateway-restart', async (req, res) => {
   try {
-    await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-    await new Promise(r => setTimeout(r, 2000)); // Let it fully stop
-    await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-    await new Promise(r => setTimeout(r, 3000)); // Let it start up
+    const log = [];
+    
+    // 1. Try graceful stop first
+    try {
+      const stopResult = await h.gatewayExec(`${h.gatewayStopCommand()} 2>&1`);
+      log.push('stop: ' + (stopResult.stdout || '').trim().slice(0, 100));
+    } catch (e) { log.push('stop failed: ' + e.message.slice(0, 80)); }
+    
+    await new Promise(r => setTimeout(r, 1500));
+    
+    // 2. Hard kill anything on ports 18789 and 5000 (gateway websocket ports)
+    for (const port of [18789, 5000]) {
+      try {
+        const pids = require('child_process').execSync(`lsof -ti tcp:${port}`, { stdio: 'pipe' }).toString().trim();
+        if (pids) {
+          for (const pid of pids.split('\n').filter(Boolean)) {
+            try { process.kill(parseInt(pid), 'SIGKILL'); log.push('killed pid ' + pid + ' on port ' + port); } catch {}
+          }
+        }
+      } catch {} // No process on port — fine
+    }
+    
+    // 3. Also kill any lingering openclaw gateway processes
+    try {
+      const pids = require('child_process').execSync(`pgrep -f "openclaw.*gateway" || true`, { stdio: 'pipe' }).toString().trim();
+      if (pids) {
+        for (const pid of pids.split('\n').filter(Boolean)) {
+          const pidNum = parseInt(pid);
+          if (pidNum && pidNum !== process.pid) { // Don't kill ourselves
+            try { process.kill(pidNum, 'SIGKILL'); log.push('killed openclaw gateway pid ' + pid); } catch {}
+          }
+        }
+      }
+    } catch {}
+    
+    await new Promise(r => setTimeout(r, 2000)); // Let everything die
+    
+    // 4. Verify ports are free
+    const stillBusy18789 = h.portListeningSync(18789);
+    const stillBusy5000 = h.portListeningSync(5000);
+    log.push('ports free: 18789=' + !stillBusy18789 + ', 5000=' + !stillBusy5000);
+    
+    // 5. Fresh start
+    try {
+      await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1 &`);
+      log.push('start command sent');
+    } catch (e) { log.push('start failed: ' + e.message.slice(0, 80)); }
+    
+    // 6. Wait for it to come up
+    await new Promise(r => setTimeout(r, 4000));
+    
+    // 7. Check state
     const gw = await h.gatewayState();
-    res.json({ ok: true, running: gw.running, statusText: gw.statusText });
+    log.push('final state: running=' + gw.running);
+    
+    // 8. Read last few lines of gateway log for context
+    let recentLog = '';
+    try {
+      const logPath = path.join(h.LOG_DIR, 'gateway.log');
+      if (fs.existsSync(logPath)) {
+        const lines = fs.readFileSync(logPath, 'utf-8').split('\n').filter(l => l.trim());
+        recentLog = lines.slice(-10).join('\n');
+      }
+    } catch {}
+    
+    res.json({ ok: true, running: gw.running, statusText: gw.statusText, log: log.join(' | '), recentLog });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

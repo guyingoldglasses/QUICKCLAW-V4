@@ -299,6 +299,17 @@ function GuidePopup(props) {
                 })
               ) : null,
 
+              // Gateway logs
+              diagResult.recentLogs ? React.createElement('div', {style:{marginTop:6}},
+                React.createElement('details', {style:{fontSize:11}},
+                  React.createElement('summary', {style:{cursor:'pointer',color:'var(--muted)',fontWeight:700,padding:'4px 0',userSelect:'none'}},
+                    '\uD83D\uDCDC Gateway Log (last 15 lines)'),
+                  React.createElement('pre', {style:{margin:'6px 0 0',padding:'8px 10px',borderRadius:6,background:'#111',
+                    color:'#9d9',fontSize:10,lineHeight:1.4,whiteSpace:'pre-wrap',wordBreak:'break-all',
+                    maxHeight:160,overflow:'auto',border:'1px solid var(--border)'}},
+                    diagResult.recentLogs))
+              ) : null,
+
               // Action buttons
               React.createElement('div', {style:{display:'flex',gap:6,marginTop:10}},
                 React.createElement('button', {onClick:runDiagnose,

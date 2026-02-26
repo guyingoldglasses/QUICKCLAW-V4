@@ -107,10 +107,27 @@ function makePkcePair() {
 async function gatewayState() {
   const ws18789 = portListeningSync(18789);
   const ws5000 = portListeningSync(5000);
-  const status = await run(`${cliBin()} gateway status`, { cwd: INSTALL_DIR });
+  const profileEnv = _profileEnvFn ? _profileEnvFn() : {};
+  const status = await run(`${cliBin()} gateway status`, { cwd: INSTALL_DIR, env: profileEnv });
   const txt = `${status.stdout}\n${status.stderr}`;
   const looksRunning = /Runtime:\s*running|listening on ws:\/\/127\.0\.0\.1:18789|gateway\s+running/i.test(txt);
   return { running: ws18789 || ws5000 || looksRunning, ws18789, port5000: ws5000, statusText: txt.trim() };
+}
+
+/**
+ * Run a gateway command with the active profile's config directory set.
+ * This ensures the gateway reads telegram tokens, API keys, etc. from
+ * the correct profile config dir (~/.openclaw-XXX or ~/.clawdbot-XXX).
+ *
+ * Usage: await gatewayExec(`${h.gatewayStartCommand()} >> log 2>&1 &`)
+ * The profileEnvFn is injected by state.js to avoid circular deps.
+ */
+let _profileEnvFn = null;
+function setProfileEnvProvider(fn) { _profileEnvFn = fn; }
+async function gatewayExec(cmd, extraOpts = {}) {
+  const profileEnv = _profileEnvFn ? _profileEnvFn() : {};
+  const env = { ...profileEnv, ...extraOpts.env };
+  return run(cmd, { cwd: INSTALL_DIR, timeout: extraOpts.timeout || 30000, ...extraOpts, env });
 }
 
 module.exports = {
@@ -119,5 +136,6 @@ module.exports = {
   CHAT_HISTORY_PATH, PROFILE_ENV_PATH, NEWS_FILE, NEWS_PREFS_FILE, VERSIONS_DIR,
   run, runSync, portListeningSync, tailFile, readJson, writeJson, readEnv, writeEnv,
   maskKey, cleanCli, cliBin, gatewayStartCommand, gatewayStopCommand,
-  ensureWithinRoot, b64url, makePkcePair, gatewayState
+  ensureWithinRoot, b64url, makePkcePair, gatewayState,
+  setProfileEnvProvider, gatewayExec
 };

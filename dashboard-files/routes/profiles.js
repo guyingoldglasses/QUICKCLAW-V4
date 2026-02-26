@@ -199,7 +199,8 @@ router.get('/api/env/download-all', (req, res) => {
 ['restart', 'stop', 'start'].forEach(action => {
   router.post(`/api/profiles/:id/${action}`, async (req, res) => {
     const cmd = action === 'start' ? h.gatewayStartCommand() : (action === 'stop' ? h.gatewayStopCommand() : `${h.gatewayStopCommand()} && ${h.gatewayStartCommand()}`);
-    const result = await h.run(`${cmd} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+    const profileEnv = st.profileEnvVars(req.params.id);
+    const result = await h.gatewayExec(`${cmd} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { env: profileEnv });
     const gw = await h.gatewayState();
     res.json({ ok: true, status: gw.running ? 'running' : 'stopped' });
   });

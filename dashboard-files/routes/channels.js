@@ -77,8 +77,8 @@ router.put('/api/profiles/:id/telegram/setup', async (req, res) => {
   // Auto-restart gateway
   let gatewayRestarted = false;
   try {
-    await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-    await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+    await h.gatewayExec(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`);
+    await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`);
     const gw = await h.gatewayState();
     gatewayRestarted = gw.running;
   } catch {}

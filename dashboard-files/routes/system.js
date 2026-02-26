@@ -92,18 +92,18 @@ router.get('/api/log/:name', (req, res) => {
 
 // ═══ GATEWAY CONTROLS ═══
 router.post('/api/gateway/start', async (req, res) => {
-  const result = await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+  const result = await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`);
   const gw = await h.gatewayState();
   res.json({ ok: gw.running, message: gw.running ? 'gateway running' : 'gateway start attempted', result, gateway: gw });
 });
 router.post('/api/gateway/stop', async (req, res) => {
-  const result = await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+  const result = await h.gatewayExec(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`);
   const gw = await h.gatewayState();
   res.json({ ok: !gw.running, message: !gw.running ? 'gateway stopped' : 'gateway stop attempted', result, gateway: gw });
 });
 router.post('/api/gateway/restart', async (req, res) => {
-  await h.run(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
-  await h.run(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`, { cwd: h.INSTALL_DIR });
+  await h.gatewayExec(`${h.gatewayStopCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`);
+  await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1`);
   const gw = await h.gatewayState();
   res.json({ ok: gw.running, message: gw.running ? 'gateway restarted' : 'gateway restart attempted', gateway: gw });
 });

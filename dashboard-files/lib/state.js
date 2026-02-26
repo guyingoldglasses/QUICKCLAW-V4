@@ -34,6 +34,16 @@ function profileEnvVars(profileId) {
   return { CLAWDBOT_CONFIG_DIR: pp.configDir, OPENCLAW_CONFIG_DIR: pp.configDir };
 }
 
+// Register with helpers so gatewayExec() always passes the active profile's config dir
+h.setProfileEnvProvider(function() {
+  try {
+    const profiles = getProfiles();
+    const active = profiles.find(p => p.active) || profiles[0];
+    if (active) return profileEnvVars(active.id);
+  } catch {}
+  return {};
+});
+
 function findSoul(pp) {
   const cfg = h.readJson(pp.configJson, null);
   const paths = [];
