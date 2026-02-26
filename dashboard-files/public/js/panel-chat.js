@@ -105,31 +105,52 @@ function GuidePopup(props) {
   var _dx = useState(null), diagResult = _dx[0], setDiag = _dx[1];
   var _dt = useState(false), diagRunning = _dt[0], setDiagRunning = _dt[1];
   var _gw = useState(false), gwRestarting = _gw[0], setGwRestarting = _gw[1];
+  // Telegram multi-step activation
+  var _act = useState(null), activatePhase = _act[0], setPhase = _act[1];
+  // phases: null | 'saving' | 'stopping' | 'starting' | 'connecting' | 'done' | 'failed'
+  var _ar = useState(null), activateResult = _ar[0], setActivateResult = _ar[1];
 
   if (!guide) return null;
   var g = GUIDES[guide];
   if (!g) return null;
 
   function handleSave(overrideProvider) {
-    // Guard: onClick passes a click event as first arg — ignore it
     if (overrideProvider && typeof overrideProvider !== 'string') overrideProvider = null;
     var provider = overrideProvider || selectedProvider;
     if (!inputVal.trim() || !provider) return;
+
+    // API key saves: simple flow
+    if (guide === 'apiKey') {
+      onKeySave(provider, inputVal.trim());
+      setSaved(true);
+      setTimeout(function() { onClose(); }, 1800);
+      return;
+    }
+
+    // ── Telegram: multi-step activation ──
+    if (guide === 'telegram') {
+      setPhase('saving');
+      setSaved(true);
+      // Step 1: Save token (fast)
+      api('/chat/save-key', {method:'POST', body:{provider:'telegram', key:inputVal.trim()}})
+        .then(function(r) {
+          if (!r.ok) { setPhase('failed'); setActivateResult({error: r.error}); return; }
+          onKeySave(provider, inputVal.trim());  // notify parent
+          // Step 2+3+4: Gateway restart + verify (show progress phases)
+          setPhase('stopping');
+          setTimeout(function(){ setPhase('starting'); }, 2500);
+          setTimeout(function(){ setPhase('connecting'); }, 7000);
+          api('/chat/telegram-activate', {method:'POST', body:{freshInstall: true}})
+            .then(function(ar) { setActivateResult(ar); setPhase(ar.ok ? 'done' : 'failed'); })
+            .catch(function(e) { setActivateResult({error: e.message}); setPhase('failed'); });
+        })
+        .catch(function(e) { setPhase('failed'); setActivateResult({error: e.message}); });
+      return;
+    }
+
+    // Generic fallback
     onKeySave(provider, inputVal.trim());
     setSaved(true);
-    // Only auto-close for simple API key saves — telegram/voice stay open to show next steps
-    if (guide === 'apiKey') {
-      setTimeout(function() { onClose(); }, 1800);
-    }
-    // Auto-run diagnostics for Telegram after a short delay to let gateway restart
-    if (guide === 'telegram') {
-      setDiagRunning(true);
-      setTimeout(function() {
-        api('/chat/telegram-diagnose', {method:'POST', body:{}})
-          .then(function(r){ setDiag(r); setDiagRunning(false); })
-          .catch(function(e){ setDiag({ok:false, error:e.message}); setDiagRunning(false); });
-      }, 5000);
-    }
   }
 
   function runDiagnose() {
@@ -226,129 +247,90 @@ function GuidePopup(props) {
                 saving ? '\u23F3 Saving...' : 'Save & Connect'))
           ) : null,
 
-          // ── Post-save: Telegram activation + integrated diagnostics ──
-          saved && guide === 'telegram' ? React.createElement('div', {style:{marginTop:4}},
-            React.createElement('div', {style:{fontSize:15,fontWeight:800,color:'var(--green)',marginBottom:14,display:'flex',alignItems:'center',gap:8}},
-              '\u2705 Token Saved Successfully!'),
+          // ── Post-save: Telegram activation progress stepper ──
+          activatePhase && guide === 'telegram' ? React.createElement('div', {style:{marginTop:4}},
+            // Progress steps
+            (function() {
+              var phases = [
+                {id:'saving', label:'Saving token to config...', done:'Token saved'},
+                {id:'stopping', label:'Stopping gateway...', done:'Gateway stopped'},
+                {id:'starting', label:'Starting gateway (installing service)...', done:'Gateway started'},
+                {id:'connecting', label:'Connecting to Telegram...', done:'Connected to Telegram'}
+              ];
+              var phaseOrder = ['saving','stopping','starting','connecting','done','failed'];
+              var currentIdx = phaseOrder.indexOf(activatePhase);
 
-            // Compact activation checklist
-            React.createElement('div', {style:{padding:'14px 16px',borderRadius:12,background:'var(--bg)',border:'1px solid var(--border)',marginBottom:14}},
-              React.createElement('div', {style:{fontSize:13,fontWeight:700,color:'var(--text)',marginBottom:10}}, 'Quick Start:'),
-              ['Find your bot in Telegram by the username you created', 'Tap <b>Start</b> or send <code>/start</code>', 'Send <b>"Hello!"</b> — your AI should reply in a few seconds'].map(function(s,i){
-                return React.createElement('div', {key:i, style:{display:'flex',gap:8,alignItems:'center',marginBottom:6,fontSize:13,color:'var(--dim)'}},
-                  React.createElement('span', {style:{fontWeight:800,color:'var(--accent)',fontSize:14,width:20,textAlign:'center'}}, (i+1)+'.'),
-                  React.createElement('span', {dangerouslySetInnerHTML:{__html:s}, style:{lineHeight:1.5}}));
-              })
-            ),
+              return React.createElement('div', {style:{padding:'16px',borderRadius:14,background:'var(--bg)',border:'1px solid var(--border)'}},
+                phases.map(function(ph, i) {
+                  var phIdx = phaseOrder.indexOf(ph.id);
+                  var isDone = currentIdx > phIdx;
+                  var isCurrent = activatePhase === ph.id;
+                  var isPending = currentIdx < phIdx && activatePhase !== 'done' && activatePhase !== 'failed';
+                  var icon = isDone || activatePhase === 'done' ? '\u2705' : isCurrent ? '\u23F3' : '\u2B1C';
+                  var color = isDone || activatePhase === 'done' ? 'var(--green)' : isCurrent ? '#7cb3ff' : 'var(--muted)';
+                  var text = isDone || activatePhase === 'done' ? ph.done : isCurrent ? ph.label : ph.done;
 
-            // ── Live diagnostic status ──
-            diagRunning ? React.createElement('div', {style:{padding:'16px',borderRadius:12,background:'rgba(100,160,255,0.06)',
-              border:'1px solid rgba(100,160,255,0.2)',textAlign:'center',fontSize:13,color:'#7cb3ff'}},
-              '\u23F3 Checking connection... verifying gateway, token, and Telegram API...') : null,
+                  return React.createElement('div', {key:ph.id, style:{display:'flex',alignItems:'center',gap:10,
+                    padding:'8px 0',opacity: isPending ? 0.4 : 1,transition:'opacity 0.3s'}},
+                    React.createElement('span', {style:{fontSize:16,width:24,textAlign:'center',
+                      animation: isCurrent ? 'pulse 1.5s infinite' : 'none'}}, icon),
+                    React.createElement('span', {style:{fontSize:13,color:color,fontWeight: isCurrent ? 700 : 400}}, text));
+                }),
 
-            diagResult ? React.createElement('div', {style:{padding:'14px 16px',borderRadius:12,background:'var(--bg)',border:'1px solid var(--border)'}},
-              React.createElement('div', {style:{fontWeight:800,fontSize:13,marginBottom:10,color:'var(--text)'}},
-                '\uD83D\uDD0D Connection Status'),
+                // Failed state
+                activatePhase === 'failed' ? React.createElement('div', {style:{marginTop:10,padding:'10px 12px',borderRadius:8,
+                  background:'rgba(255,80,80,0.08)',border:'1px solid rgba(255,80,80,0.2)',fontSize:12,color:'#ff6b6b'}},
+                  '\u274C ' + (activateResult && activateResult.error ? activateResult.error : 'Activation failed. Try restarting from the Dashboard.')) : null,
 
-              // Bot info
-              diagResult.botInfo ? React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
-                background:'rgba(80,200,120,0.08)',border:'1px solid rgba(80,200,120,0.2)',marginBottom:6}},
-                React.createElement('span',{style:{fontSize:14}},'\u2705'),
-                React.createElement('span',{style:{color:'var(--green)',fontSize:12}}, 'Bot valid — @'+diagResult.botInfo.username)
-              ) : diagResult.botError ? React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
-                background:'rgba(255,80,80,0.08)',border:'1px solid rgba(255,80,80,0.2)',marginBottom:6}},
-                React.createElement('span',{style:{fontSize:14}},'\u274C'),
-                React.createElement('span',{style:{color:'#ff6b6b',fontSize:12}}, diagResult.botError)
-              ) : null,
+                // Done state — success + next steps
+                activatePhase === 'done' ? React.createElement('div', {style:{marginTop:12}},
+                  // Bot info
+                  activateResult && activateResult.botInfo ? React.createElement('div', {style:{padding:'10px 14px',borderRadius:10,
+                    background:'rgba(80,200,120,0.08)',border:'1px solid rgba(80,200,120,0.2)',marginBottom:12,
+                    display:'flex',alignItems:'center',gap:10}},
+                    React.createElement('span',{style:{fontSize:24}},'\uD83E\uDD16'),
+                    React.createElement('div', null,
+                      React.createElement('div', {style:{fontWeight:800,fontSize:14,color:'var(--green)'}},
+                        'Your bot is live! \uD83C\uDF89'),
+                      React.createElement('div', {style:{fontSize:12,color:'var(--dim)',marginTop:2}},
+                        '@' + activateResult.botInfo.username + ' \u2014 ' + activateResult.botInfo.firstName))
+                  ) : null,
 
-              // Gateway status
-              React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
-                background: diagResult.gateway.running ? 'rgba(80,200,120,0.08)' : 'rgba(255,80,80,0.08)',
-                border: '1px solid '+(diagResult.gateway.running ? 'rgba(80,200,120,0.2)' : 'rgba(255,80,80,0.2)'),marginBottom:6}},
-                React.createElement('span',{style:{fontSize:14}}, diagResult.gateway.running ? '\u2705' : '\u274C'),
-                React.createElement('span',{style:{color: diagResult.gateway.running ? 'var(--green)' : '#ff6b6b', fontSize:12}},
-                  diagResult.gateway.running ? 'Gateway running' : 'Gateway NOT running')
-              ),
-
-              // Pending updates
-              typeof diagResult.pendingUpdates === 'number' ? React.createElement('div', {style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:8,
-                background: diagResult.pendingUpdates > 0 ? 'rgba(255,180,60,0.08)' : 'rgba(80,200,120,0.08)',
-                border: '1px solid '+(diagResult.pendingUpdates > 0 ? 'rgba(255,180,60,0.2)' : 'rgba(80,200,120,0.2)'),marginBottom:6}},
-                React.createElement('span',{style:{fontSize:14}}, diagResult.pendingUpdates > 0 ? '\u26A0\uFE0F' : '\u2705'),
-                React.createElement('span',{style:{color: diagResult.pendingUpdates > 0 ? 'var(--accent)' : 'var(--green)', fontSize:12}},
-                  diagResult.pendingUpdates > 0
-                    ? diagResult.pendingUpdates+' unread msg(s) queued — gateway not processing'
-                    : 'Messages polling normally')
-              ) : null,
-
-              // Config locations (collapsed)
-              diagResult.tokenLocations ? React.createElement('div', {style:{padding:'6px 12px',borderRadius:8,marginBottom:6,fontSize:11,color:'var(--muted)',display:'flex',flexWrap:'wrap',gap:8}},
-                Object.entries(diagResult.tokenLocations).map(function(entry){
-                  var loc = entry[0], ok = entry[1];
-                  var label = loc === 'telegramEnabled' ? 'channel' : loc === 'pluginEnabled' ? 'plugin' : loc;
-                  return React.createElement('span',{key:loc,style:{color:ok?'var(--green)':'#ff6b6b'}},
-                    (ok?'\u2713':'\u2717')+' '+label);
-                })
-              ) : null,
-
-              // Suggestions
-              diagResult.suggestions && diagResult.suggestions.length > 0 ? React.createElement('div', {style:{marginTop:4,padding:'8px 12px',borderRadius:8,
-                background:'rgba(255,180,60,0.06)',border:'1px solid rgba(255,180,60,0.15)'}},
-                diagResult.suggestions.map(function(s,i){
-                  return React.createElement('div',{key:i,style:{fontSize:11,color:'var(--dim)',lineHeight:1.5,marginBottom:2}}, '\u2022 '+s);
-                })
-              ) : null,
-
-              // Gateway logs
-              diagResult.recentLogs ? React.createElement('div', {style:{marginTop:6}},
-                React.createElement('details', {style:{fontSize:11}},
-                  React.createElement('summary', {style:{cursor:'pointer',color:'var(--muted)',fontWeight:700,padding:'4px 0',userSelect:'none'}},
-                    '\uD83D\uDCDC Gateway Log (all sources)'),
-                  React.createElement('pre', {style:{margin:'6px 0 0',padding:'8px 10px',borderRadius:6,background:'#111',
-                    color:'#9d9',fontSize:10,lineHeight:1.4,whiteSpace:'pre-wrap',wordBreak:'break-all',
-                    maxHeight:200,overflow:'auto',border:'1px solid var(--border)'}},
-                    diagResult.recentLogs))
-              ) : null,
-
-              // Config summary
-              diagResult.configSummary ? React.createElement('div', {style:{marginTop:6}},
-                React.createElement('details', {style:{fontSize:11}},
-                  React.createElement('summary', {style:{cursor:'pointer',color:'var(--muted)',fontWeight:700,padding:'4px 0',userSelect:'none'}},
-                    '\u2699\uFE0F Config Details'),
-                  React.createElement('div', {style:{margin:'6px 0 0',padding:'8px 10px',borderRadius:6,background:'#111',
-                    fontSize:10,lineHeight:1.6,color:'var(--dim)',border:'1px solid var(--border)'}},
-                    React.createElement('div', null, 'Path: ' + (diagResult.configSummary.configPath || '?')),
-                    React.createElement('div', null, 'Token: ' + (diagResult.configSummary.tokenPreview || 'none')),
-                    React.createElement('div', null, 'Telegram channel: ' + (diagResult.configSummary.telegramEnabled ? '\u2705 enabled' : '\u274C disabled')),
-                    React.createElement('div', null, 'Telegram plugin: ' + (diagResult.configSummary.pluginEnabled ? '\u2705 enabled' : '\u274C disabled')),
-                    React.createElement('div', null, 'Channels: ' + (diagResult.configSummary.allChannels || []).join(', ')),
-                    React.createElement('div', null, 'Plugins: ' + (diagResult.configSummary.allPlugins || []).join(', '))))
-              ) : null,
-
-              // Action buttons
-              React.createElement('div', {style:{display:'flex',gap:6,marginTop:10}},
-                React.createElement('button', {onClick:runDiagnose,
-                  style:{flex:1,padding:'7px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',
-                    border:'1px solid var(--border)',background:'var(--card)',color:'var(--text)'}},
-                  '\uD83D\uDD04 Re-test'),
-                !diagResult.gateway.running || (diagResult.pendingUpdates && diagResult.pendingUpdates > 0) ? React.createElement('button', {onClick:restartGateway, disabled:gwRestarting,
-                  style:{flex:1,padding:'7px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer',
-                    border:'none',background:'var(--accent)',color:'#1a1a1a'}},
-                  gwRestarting ? '\u23F3 Restarting...' : '\uD83D\uDD04 Restart Gateway') : null
-              )
-            ) : null,
-
-            // Manual diagnose button (only if auto-diagnose didn't run)
-            !diagResult && !diagRunning ? React.createElement('button', {onClick:runDiagnose,
-              style:{width:'100%',padding:'12px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',
-                border:'2px solid rgba(100,160,255,0.4)',background:'rgba(100,160,255,0.08)',color:'#7cb3ff',
-                transition:'all 0.2s'}},
-              '\uD83D\uDD0D Bot not responding? Test Connection') : null
-
+                  // Pairing info
+                  activateResult && activateResult.pairingInfo ? React.createElement('div', {style:{padding:'14px 16px',borderRadius:12,
+                    background:'linear-gradient(135deg, rgba(255,180,60,0.08), rgba(255,120,0,0.04))',
+                    border:'2px solid rgba(255,180,60,0.25)',marginBottom:12}},
+                    React.createElement('div', {style:{fontWeight:800,fontSize:14,color:'var(--text)',marginBottom:10}},
+                      '\uD83D\uDD17 Connect Your Telegram Account'),
+                    activateResult.pairingInfo.mode === 'pairing' ?
+                      React.createElement('div', null,
+                        React.createElement('div', {style:{fontSize:13,color:'var(--dim)',lineHeight:1.7,marginBottom:10},
+                          dangerouslySetInnerHTML:{__html:'Your bot uses <b>pairing mode</b> for security. To link your account:'}}),
+                        React.createElement('ol', {style:{margin:0,paddingLeft:22,fontSize:13,lineHeight:2.2,color:'var(--dim)'}},
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Open <b>@' + (activateResult.botInfo ? activateResult.botInfo.username : 'your_bot') + '</b> in Telegram'}}),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Send <b>/start</b> \u2014 the bot will show you a <b>pairing code</b>'}}),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Open <b>Terminal</b> on your Mac and run:'}}),
+                          React.createElement('li', {style:{paddingLeft:4,listStyle:'none',marginLeft:-22}},
+                            React.createElement('div', {style:{padding:'10px 14px',borderRadius:8,background:'var(--bg)',border:'1px solid var(--border)',
+                              fontFamily:'monospace',fontSize:12,color:'var(--accent)',cursor:'pointer',position:'relative',marginTop:4},
+                              onClick:function(){ navigator.clipboard.writeText('openclaw channels login --channel telegram'); },
+                              title:'Click to copy'},
+                              'openclaw channels login --channel telegram',
+                              React.createElement('span',{style:{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
+                                fontSize:10,color:'var(--dim)'}},'\uD83D\uDCCB'))),
+                          React.createElement('li', {style:{paddingLeft:4}, dangerouslySetInnerHTML:{__html:'Enter the pairing code when prompted \u2014 done!'}}))
+                      ) :
+                      React.createElement('div', {style:{fontSize:13,color:'var(--dim)',lineHeight:1.7},
+                        dangerouslySetInnerHTML:{__html:'Your bot is in <b>' + activateResult.pairingInfo.mode + '</b> mode. ' +
+                        'Open <b>@' + (activateResult.botInfo ? activateResult.botInfo.username : 'your_bot') + '</b> in Telegram and send any message \u2014 your AI will reply!'}})
+                  ) : null
+                ) : null
+              );
+            })()
           ) : null,
 
           // ── Post-save: non-telegram guides with afterSaveNote ──
-          saved && !g.postSaveSteps && g.afterSaveNote ? React.createElement('div', {style:{marginTop:14,padding:14,borderRadius:10,
+          saved && !activatePhase && g.afterSaveNote ? React.createElement('div', {style:{marginTop:14,padding:14,borderRadius:10,
             background:'rgba(80,200,120,0.1)',border:'1px solid rgba(80,200,120,0.2)',fontSize:13,color:'var(--green)',lineHeight:1.6}},
             '\u2713 ', g.afterSaveNote) : null,
 
@@ -385,21 +367,25 @@ function GuidePopup(props) {
 
         // ── Footer buttons ──
         React.createElement('div', {style:{display:'flex',justifyContent:'center',gap:10,marginTop:24,flexWrap:'wrap'}},
-          // Skip button (only before save)
-          !saved ? React.createElement('button', {onClick:onClose,
+          // Skip button (only before save and not during activation)
+          !saved && !activatePhase ? React.createElement('button', {onClick:onClose,
             style:{padding:'12px 28px',borderRadius:10,background:'transparent',color:'var(--muted)',fontSize:13,fontWeight:600,border:'1px solid var(--border)',cursor:'pointer'}},
             'Skip for now') : null,
 
-          // After telegram save: "Continue to Voice Setup" button
-          saved && guide === 'telegram' ? React.createElement('button', {onClick:function(){ props.onSwitchGuide && props.onSwitchGuide('voice'); },
+          // After telegram activation done: "Continue to Voice Setup" button
+          activatePhase === 'done' && guide === 'telegram' ? React.createElement('button', {onClick:function(){ props.onSwitchGuide && props.onSwitchGuide('voice'); },
             style:{padding:'12px 28px',borderRadius:10,background:'transparent',color:'var(--accent)',fontSize:13,fontWeight:700,
               border:'2px solid var(--accent)',cursor:'pointer',transition:'all 0.2s'}},
             '\uD83C\uDF99\uFE0F Set Up Voice Chat \u2192') : null,
 
-          // Done / Close button
-          React.createElement('button', {onClick:onClose,
-            style:{padding:'12px 36px',borderRadius:10,background:saved?'var(--accent)':'var(--border)',color:saved?'#1a1a1a':'var(--text)',fontSize:14,fontWeight:700,border:'none',cursor:'pointer',transition:'all 0.2s'}},
-            saved ? (guide === 'telegram' ? '\u2705 Done \u2014 I\'ll Test It' : '\uD83C\uDF89 Done!') : 'Close'))
+          // Done / Close button (hide during activation progress)
+          !activatePhase || activatePhase === 'done' || activatePhase === 'failed' ?
+            React.createElement('button', {onClick:onClose,
+              style:{padding:'12px 36px',borderRadius:10,
+                background: activatePhase === 'done' ? 'var(--accent)' : saved ? 'var(--accent)' : 'var(--border)',
+                color: activatePhase === 'done' || saved ? '#1a1a1a' : 'var(--text)',
+                fontSize:14,fontWeight:700,border:'none',cursor:'pointer',transition:'all 0.2s'}},
+              activatePhase === 'done' ? '\u2705 Done!' : saved ? 'Close' : 'Close') : null)
       )
     )
   );
@@ -587,23 +573,24 @@ function PanelChat(props) {
   }
 
   function handleKeySave(provider, key) {
+    guideDismissed.current = true;
+
+    // For telegram, GuidePopup handles save-key + activate directly
+    // We only need to mark setup complete and refresh status
+    if (provider === 'telegram') {
+      api('/chat/complete-setup', {method:'POST'})
+        .then(function(){ loadStatus(); })
+        .catch(function(){ loadStatus(); });
+      return;
+    }
+
+    // For API keys (openai/anthropic): original save flow
     setSaving(true);
-    guideDismissed.current = true;  // Don't reopen popup after a save attempt
     api('/chat/save-key', {method:'POST', body:{provider:provider, key:key}})
       .then(function(r) {
         setSaving(false);
         if (r.ok) {
-          if (provider === 'telegram') {
-            if (r.gatewayRestarted) {
-              toast('Token saved & gateway restarted! Open your bot in Telegram and send /start', 'success');
-            } else {
-              toast('Token saved! Start the gateway from the Dashboard, then message your bot.', 'success');
-            }
-          } else {
-            toast('API key saved! You can start chatting now.', 'success');
-          }
-          // IMPORTANT: complete-setup MUST finish before loadStatus, otherwise
-          // status still shows firstRun=true and the popup could reopen
+          toast('API key saved! You can start chatting now.', 'success');
           api('/chat/complete-setup', {method:'POST'})
             .then(function(){ loadStatus(); })
             .catch(function(){ loadStatus(); });

@@ -258,49 +258,11 @@ router.post('/api/chat/save-key', async (req, res) => {
       if (!token.includes(':')) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token. It should look like 123456789:ABCdef...' });
       // Write token to ALL config locations OpenClaw might read from
       const writeResults = st.writeTelegramTokenEverywhere(token);
-      // Auto-restart gateway so it picks up the new token (hard restart)
-      let gatewayRestarted = false;
-      let restartLog = [];
-      try {
-        // Stop everything first
-        try { await h.gatewayExec(`${h.gatewayStopCommand()} 2>&1`); } catch {}
-        await new Promise(r => setTimeout(r, 1500));
-        
-        // Hard kill anything on gateway ports
-        const { execSync } = require('child_process');
-        for (const port of [18789, 5000]) {
-          try {
-            const pids = execSync(`lsof -ti tcp:${port}`, { stdio: 'pipe' }).toString().trim();
-            if (pids) {
-              for (const pid of pids.split('\n').filter(Boolean)) {
-                try { process.kill(parseInt(pid), 'SIGKILL'); restartLog.push('killed:' + pid); } catch {}
-              }
-            }
-          } catch {}
-        }
-        try {
-          const pids = execSync(`pgrep -f "openclaw.*gateway" || true`, { stdio: 'pipe' }).toString().trim();
-          for (const pid of pids.split('\n').filter(Boolean)) {
-            const n = parseInt(pid);
-            if (n && n !== process.pid) { try { process.kill(n, 'SIGKILL'); } catch {} }
-          }
-        } catch {}
-        
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // Full start: install LaunchAgent + patch plist + start
-        const startResult = await h.gatewayFullStart(path.join(h.LOG_DIR, 'gateway.log'));
-        gatewayRestarted = startResult.ok;
-        restartLog = restartLog.concat(startResult.log);
-      } catch (e) { restartLog.push('err:' + e.message.slice(0, 50)); }
+      // Return immediately — frontend will call /telegram-activate for the slow restart
       return res.json({
         ok: true, provider: 'telegram',
         writeResults,
-        gatewayRestarted,
-        restartLog: restartLog.join(' | '),
-        note: gatewayRestarted
-          ? 'Token saved and gateway restarted! Open your bot in Telegram and send /start.'
-          : 'Token saved to all configs. Start the gateway from the Dashboard, then message your bot.'
+        note: 'Token saved. Call /telegram-activate to restart gateway.'
       });
 
     } else {
@@ -309,6 +271,142 @@ router.post('/api/chat/save-key', async (req, res) => {
   } catch (err) {
     console.error('save-key error:', err);
     res.status(500).json({ ok: false, error: 'Save failed: ' + (err.message || String(err)) });
+  }
+});
+
+// ═══ TELEGRAM ACTIVATE — full restart + verify (called after save-key) ═══
+router.post('/api/chat/telegram-activate', async (req, res) => {
+  try {
+    const steps = [];
+    const { execSync } = require('child_process');
+    const freshInstall = req.body && req.body.freshInstall;
+
+    // Step 1: Stop gateway
+    steps.push({ step: 'stop', status: 'running' });
+    try { await h.gatewayExec(`${h.gatewayStopCommand()} 2>&1`); } catch {}
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Hard kill anything on gateway ports
+    for (const port of [18789, 5000]) {
+      try {
+        const pids = execSync(`lsof -ti tcp:${port}`, { stdio: 'pipe' }).toString().trim();
+        for (const pid of pids.split('\n').filter(Boolean)) {
+          try { process.kill(parseInt(pid), 'SIGKILL'); } catch {}
+        }
+      } catch {}
+    }
+    try {
+      const pids = execSync(`pgrep -f "openclaw.*gateway" || true`, { stdio: 'pipe' }).toString().trim();
+      for (const pid of pids.split('\n').filter(Boolean)) {
+        const n = parseInt(pid);
+        if (n && n !== process.pid) { try { process.kill(n, 'SIGKILL'); } catch {} }
+      }
+    } catch {}
+    await new Promise(r => setTimeout(r, 2000));
+    steps[0].status = 'done';
+
+    // Step 2: Clear old telegram session (fresh pairing)
+    if (freshInstall) {
+      const sessionDirs = [
+        path.join(h.HOME, '.openclaw', 'telegram'),
+        path.join(h.HOME, '.openclaw', 'devices')
+      ];
+      for (const dir of sessionDirs) {
+        try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      }
+      steps.push({ step: 'clean', status: 'done' });
+    }
+
+    // Step 3: Full start (install LaunchAgent + patch plist + start)
+    steps.push({ step: 'start', status: 'running' });
+    const startResult = await h.gatewayFullStart(path.join(h.LOG_DIR, 'gateway.log'));
+    steps[steps.length - 1].status = startResult.ok ? 'done' : 'failed';
+
+    // Step 4: Wait for telegram to initialize (gateway needs time to connect)
+    if (startResult.ok) {
+      steps.push({ step: 'connecting', status: 'running' });
+      await new Promise(r => setTimeout(r, 5000));
+
+      // Check if telegram is actually polling
+      const settings = st.getSettings();
+      const token = settings.telegramBotToken || '';
+      let telegramConnected = false;
+      let botInfo = null;
+      let pairingInfo = null;
+
+      if (token) {
+        // Validate token
+        try {
+          const info = await new Promise((resolve, reject) => {
+            const treq = https.get(`https://api.telegram.org/bot${token}/getMe`, { timeout: 8000 }, (resp) => {
+              let data = '';
+              resp.on('data', c => data += c);
+              resp.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Bad JSON')); } });
+            });
+            treq.on('error', reject);
+            treq.on('timeout', () => { treq.destroy(); reject(new Error('timeout')); });
+          });
+          if (info.ok) botInfo = { username: info.result.username, firstName: info.result.first_name };
+        } catch {}
+
+        // Check updates to see if gateway is now polling
+        try {
+          const updates = await new Promise((resolve, reject) => {
+            const ureq = https.get(`https://api.telegram.org/bot${token}/getUpdates?limit=1&timeout=0`, { timeout: 8000 }, (resp) => {
+              let data = '';
+              resp.on('data', c => data += c);
+              resp.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Bad JSON')); } });
+            });
+            ureq.on('error', reject);
+            ureq.on('timeout', () => { ureq.destroy(); reject(new Error('timeout')); });
+          });
+          // If getUpdates returns ok with 0 results, gateway is polling (consumed all updates)
+          // If it returns results, gateway hasn't consumed them yet
+          telegramConnected = updates.ok && updates.result.length === 0;
+        } catch {}
+      }
+
+      // Check openclaw.json for pairing mode
+      try {
+        const ocPath = st.openclawConfigPath();
+        const oc = h.readJson(ocPath, {});
+        const dmPolicy = oc.channels?.telegram?.dmPolicy || 'open';
+        if (dmPolicy === 'pairing') {
+          pairingInfo = {
+            mode: 'pairing',
+            note: 'Your bot uses pairing mode. When you first message it, it will give you a pairing code. Run "openclaw channels login --channel telegram" in Terminal to complete pairing, OR change dmPolicy to "open" for instant access.'
+          };
+        } else {
+          pairingInfo = {
+            mode: dmPolicy,
+            note: 'Your bot is set to "' + dmPolicy + '" mode — anyone can message it directly.'
+          };
+        }
+      } catch {}
+
+      steps[steps.length - 1].status = 'done';
+
+      return res.json({
+        ok: true,
+        gatewayRunning: startResult.ok,
+        telegramConnected,
+        botInfo,
+        pairingInfo,
+        steps,
+        startLog: startResult.log
+      });
+    }
+
+    return res.json({
+      ok: false,
+      gatewayRunning: false,
+      steps,
+      startLog: startResult.log,
+      error: 'Gateway failed to start'
+    });
+  } catch (err) {
+    console.error('telegram-activate error:', err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

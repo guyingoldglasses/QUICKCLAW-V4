@@ -49,6 +49,7 @@
     @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
     .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
     .log-area{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;color:var(--green);max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
     .nav-btn{width:100%;padding:9px 12px;display:flex;align-items:center;gap:10px;background:transparent;border:none;border-radius:8px;color:var(--dim);font-size:13px;transition:all .15s;margin-bottom:2px}
     .nav-btn.active{background:var(--accent-d);color:var(--accent);font-weight:600}.nav-btn:hover{background:var(--surface2)}
