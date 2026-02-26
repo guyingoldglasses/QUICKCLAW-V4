@@ -45,7 +45,7 @@
     .stat-val{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;text-align:center}
     .stat-lbl{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;text-align:center;margin-top:2px}
     .mono{font-family:'JetBrains Mono',monospace}
-    .toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;z-index:200;font-size:13px;display:flex;align-items:center;gap:8px;animation:slideUp .3s;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+    .toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 20px;z-index:10000;font-size:13px;display:flex;align-items:center;gap:8px;animation:slideUp .3s;box-shadow:0 8px 32px rgba(0,0,0,.4)}
     @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
     .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}

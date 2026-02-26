@@ -47,12 +47,27 @@ function saveSkillStates(pp, s) { h.writeJson(path.join(pp.workspace, '.skill-st
 
 // ═══ SETTINGS ═══
 function getSettings() {
-  return h.readJson(h.SETTINGS_PATH, {
+  const defaults = {
     openaiApiKey: '', openaiOAuthEnabled: false, anthropicApiKey: '',
     telegramBotToken: '', ftpHost: '', ftpUser: '', emailUser: ''
-  });
+  };
+  const raw = h.readJson(h.SETTINGS_PATH, defaults);
+  // Guard against corrupt file returning non-object (null, string, array, etc.)
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+  return raw;
 }
-function saveSettings(s) { h.writeJson(h.SETTINGS_PATH, { ...getSettings(), ...s }); }
+function saveSettings(s) {
+  try {
+    const current = getSettings();
+    const merged = Object.assign({}, current, s);
+    h.writeJson(h.SETTINGS_PATH, merged);
+  } catch (err) {
+    console.error('saveSettings error:', err.message, '— path:', h.SETTINGS_PATH);
+    // Fallback: try to write just the new values
+    try { h.writeJson(h.SETTINGS_PATH, s); } catch (e2) { console.error('saveSettings fallback also failed:', e2.message); }
+    throw err; // Re-throw so callers can catch
+  }
+}
 
 // ═══ SKILLS CATALOG ═══
 function defaultSkillsCatalog() {

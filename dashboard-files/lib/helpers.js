@@ -52,7 +52,30 @@ function tailFile(logFile, lines = 120) {
   return fs.readFileSync(p, 'utf8').split('\n').slice(-Math.max(lines, 1)).join('\n');
 }
 function readJson(p, fallback) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return typeof fallback === 'function' ? fallback() : fallback; } }
-function writeJson(p, obj) { fs.writeFileSync(p, JSON.stringify(obj, null, 2)); }
+function writeJson(p, obj) {
+  // Ensure parent directory exists
+  const dir = path.dirname(p);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  // Stringify with safety — strip any non-serializable values
+  let json;
+  try {
+    json = JSON.stringify(obj, function(key, value) {
+      if (typeof value === 'function' || typeof value === 'bigint' || typeof value === 'symbol') return undefined;
+      return value;
+    }, 2);
+  } catch (e) {
+    console.error('writeJson stringify error for', p, ':', e.message);
+    // Last resort: try to write a clean version
+    json = JSON.stringify(Object.fromEntries(
+      Object.entries(obj || {}).filter(function([k, v]) {
+        return v !== undefined && typeof v !== 'function';
+      }).map(function([k, v]) {
+        try { JSON.stringify(v); return [k, v]; } catch { return [k, String(v)]; }
+      })
+    ), null, 2);
+  }
+  fs.writeFileSync(p, json);
+}
 function readEnv(fp) {
   try {
     const v = {};
