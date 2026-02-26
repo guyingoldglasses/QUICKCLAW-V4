@@ -16,6 +16,8 @@ const DATA_DIR = path.join(ROOT, 'dashboard-data');
 const INSTALL_DIR = path.join(ROOT, 'openclaw');
 const CONFIG_PATH = path.join(INSTALL_DIR, 'config', 'default.yaml');
 const LOCAL_OPENCLAW = path.join(INSTALL_DIR, 'node_modules', '.bin', 'openclaw');
+// OpenClaw state dir — lives on the external drive so unplugging kills everything
+const OPENCLAW_STATE_DIR = process.env.OPENCLAW_STATE_DIR || path.join(ROOT, 'openclaw-state');
 const PROFILES_PATH = path.join(DATA_DIR, 'profiles.json');
 const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
 const SKILLS_PATH = path.join(DATA_DIR, 'skills.json');
@@ -176,6 +178,12 @@ async function gatewayFullStart(logFile) {
           envBlock += '    <key>OPENCLAW_CONFIG_DIR</key>\n    <string>' + profileEnv.OPENCLAW_CONFIG_DIR + '</string>\n';
           envBlock += '    <key>CLAWDBOT_CONFIG_DIR</key>\n    <string>' + profileEnv.CLAWDBOT_CONFIG_DIR + '</string>\n';
         }
+        if (profileEnv.OPENCLAW_STATE_DIR) {
+          envBlock += '    <key>OPENCLAW_STATE_DIR</key>\n    <string>' + profileEnv.OPENCLAW_STATE_DIR + '</string>\n';
+        }
+        if (profileEnv.OPENCLAW_CONFIG_PATH) {
+          envBlock += '    <key>OPENCLAW_CONFIG_PATH</key>\n    <string>' + profileEnv.OPENCLAW_CONFIG_PATH + '</string>\n';
+        }
         envBlock += '  </dict>\n';
         plist = plist.replace(/<\/dict>\s*<\/plist>/, envBlock + '</dict>\n</plist>');
         patched = true;
@@ -207,7 +215,7 @@ async function gatewayFullStart(logFile) {
 }
 
 module.exports = {
-  PORT, HOME, ROOT, PID_DIR, LOG_DIR, DATA_DIR, INSTALL_DIR, CONFIG_PATH, LOCAL_OPENCLAW,
+  PORT, HOME, ROOT, PID_DIR, LOG_DIR, DATA_DIR, INSTALL_DIR, CONFIG_PATH, LOCAL_OPENCLAW, OPENCLAW_STATE_DIR,
   PROFILES_PATH, SETTINGS_PATH, SKILLS_PATH, CONFIG_BACKUPS_DIR, ANTFARM_RUNS_PATH,
   CHAT_HISTORY_PATH, PROFILE_ENV_PATH, NEWS_FILE, NEWS_PREFS_FILE, VERSIONS_DIR,
   run, runSync, portListeningSync, tailFile, readJson, writeJson, readEnv, writeEnv,

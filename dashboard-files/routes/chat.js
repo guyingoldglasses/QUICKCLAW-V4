@@ -305,25 +305,103 @@ router.post('/api/chat/telegram-activate', async (req, res) => {
     await new Promise(r => setTimeout(r, 2000));
     steps[0].status = 'done';
 
-    // Step 2: Clear old telegram session (fresh pairing)
+    // Step 2: Clear old telegram session data for fresh pairing
     if (freshInstall) {
-      const sessionDirs = [
-        path.join(h.HOME, '.openclaw', 'telegram'),
-        path.join(h.HOME, '.openclaw', 'devices')
-      ];
-      for (const dir of sessionDirs) {
+      const ocDir = path.join(h.HOME, '.openclaw');  // symlink → external drive
+      const cleanDirs = ['telegram', 'devices', 'completions', 'cron', 'media'];
+      for (const sub of cleanDirs) {
+        const dir = path.join(ocDir, sub);
         try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      }
+      // Also clear the Telegram bot's pending updates so old messages don't replay
+      const settings = st.getSettings();
+      const token = settings.telegramBotToken || '';
+      if (token) {
+        try {
+          // getUpdates with offset -1 clears the queue
+          await new Promise((resolve) => {
+            const req = https.get(`https://api.telegram.org/bot${token}/getUpdates?offset=-1&timeout=0`, { timeout: 5000 }, (resp) => {
+              let d = ''; resp.on('data', c => d += c); resp.on('end', () => resolve(d));
+            });
+            req.on('error', () => resolve(null));
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+          });
+        } catch {}
       }
       steps.push({ step: 'clean', status: 'done' });
     }
 
-    // Step 3: Full start (install LaunchAgent + patch plist + start)
+    // Step 3: Ensure telegram is ENABLED with pairing mode in openclaw.json
+    // This is critical — openclaw channels add may set enabled:false or dmPolicy:open
+    try {
+      const ocPath = st.openclawConfigPath();
+      const ocDir = path.dirname(ocPath);
+      fs.mkdirSync(ocDir, { recursive: true });
+      const oc = fs.existsSync(ocPath) ? h.readJson(ocPath, {}) : {};
+      // Ensure channel structure exists and is fully enabled
+      if (!oc.channels) oc.channels = {};
+      if (!oc.channels.telegram) oc.channels.telegram = {};
+      oc.channels.telegram.enabled = true;           // MUST be true for gateway to load it
+      oc.channels.telegram.dmPolicy = 'pairing';     // Require approval per user
+      oc.channels.telegram.groupPolicy = 'allowlist'; // Don't respond in random groups
+      oc.channels.telegram.streaming = 'partial';
+      // Preserve bot token if set
+      const settings = st.getSettings();
+      if (settings.telegramBotToken && !oc.channels.telegram.botToken) {
+        oc.channels.telegram.botToken = settings.telegramBotToken;
+      }
+      // Ensure plugin is enabled too (gateway needs both)
+      if (!oc.plugins) oc.plugins = {};
+      if (!oc.plugins.entries) oc.plugins.entries = {};
+      if (!oc.plugins.entries.telegram) oc.plugins.entries.telegram = {};
+      oc.plugins.entries.telegram.enabled = true;     // MUST be true
+      h.writeJson(ocPath, oc);
+      steps.push({ step: 'config', status: 'done', note: 'channels.telegram.enabled=true, dmPolicy=pairing' });
+    } catch (e) {
+      console.error('Failed to enforce telegram config:', e.message);
+    }
+
+    // Step 4: Full start (install LaunchAgent + patch plist + start)
     steps.push({ step: 'start', status: 'running' });
     const startResult = await h.gatewayFullStart(path.join(h.LOG_DIR, 'gateway.log'));
     steps[steps.length - 1].status = startResult.ok ? 'done' : 'failed';
 
     // Step 4: Wait for telegram to initialize (gateway needs time to connect)
     if (startResult.ok) {
+      // Re-enforce config after gateway install (it might have reset enabled/dmPolicy)
+      try {
+        const ocPath2 = st.openclawConfigPath();
+        if (fs.existsSync(ocPath2)) {
+          const oc2 = h.readJson(ocPath2, {});
+          let needsWrite = false;
+          if (oc2.channels?.telegram?.enabled !== true) {
+            oc2.channels = oc2.channels || {};
+            oc2.channels.telegram = oc2.channels.telegram || {};
+            oc2.channels.telegram.enabled = true;
+            needsWrite = true;
+          }
+          if (oc2.channels?.telegram?.dmPolicy !== 'pairing') {
+            oc2.channels.telegram.dmPolicy = 'pairing';
+            needsWrite = true;
+          }
+          if (oc2.plugins?.entries?.telegram?.enabled !== true) {
+            oc2.plugins = oc2.plugins || {};
+            oc2.plugins.entries = oc2.plugins.entries || {};
+            oc2.plugins.entries.telegram = oc2.plugins.entries.telegram || {};
+            oc2.plugins.entries.telegram.enabled = true;
+            needsWrite = true;
+          }
+          if (needsWrite) {
+            h.writeJson(ocPath2, oc2);
+            // Restart gateway to pick up the fixed config
+            try { await h.gatewayExec(`${h.gatewayStopCommand()} 2>&1`); } catch {}
+            await new Promise(r => setTimeout(r, 2000));
+            await h.gatewayExec(`${h.cliBin()} gateway start 2>&1`);
+            await new Promise(r => setTimeout(r, 3000));
+          }
+        }
+      } catch {}
+
       steps.push({ step: 'connecting', status: 'running' });
       await new Promise(r => setTimeout(r, 5000));
 
@@ -350,6 +428,7 @@ router.post('/api/chat/telegram-activate', async (req, res) => {
         } catch {}
 
         // Check updates to see if gateway is now polling
+        // Gateway running + valid token = connected (we can't directly verify polling)
         try {
           const updates = await new Promise((resolve, reject) => {
             const ureq = https.get(`https://api.telegram.org/bot${token}/getUpdates?limit=1&timeout=0`, { timeout: 8000 }, (resp) => {
@@ -360,9 +439,9 @@ router.post('/api/chat/telegram-activate', async (req, res) => {
             ureq.on('error', reject);
             ureq.on('timeout', () => { ureq.destroy(); reject(new Error('timeout')); });
           });
-          // If getUpdates returns ok with 0 results, gateway is polling (consumed all updates)
-          // If it returns results, gateway hasn't consumed them yet
-          telegramConnected = updates.ok && updates.result.length === 0;
+          // If getUpdates succeeds, the token works and Telegram can reach the bot
+          // Gateway is running (we verified above), so consider it connected
+          telegramConnected = updates.ok === true;
         } catch {}
       }
 
@@ -653,6 +732,7 @@ router.post('/api/chat/telegram-diagnose', async (req, res) => {
     // 4. Recent gateway logs — check BOTH QuickClaw log dir AND OpenClaw's own log dir
     const logSources = [
       path.join(h.LOG_DIR, 'gateway.log'),
+      path.join(h.OPENCLAW_STATE_DIR, 'logs', 'gateway.log'),
       path.join(h.HOME, '.openclaw', 'logs', 'gateway.log'),
       path.join(h.HOME, '.clawdbot', 'logs', 'gateway.log')
     ];

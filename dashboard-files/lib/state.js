@@ -16,22 +16,33 @@ function getProfiles() {
 function saveProfiles(list) { h.writeJson(h.PROFILES_PATH, list); }
 
 function profilePaths(profileId) {
+  // Primary: external drive state dir (portable, unpluggable)
+  const stateDir = h.OPENCLAW_STATE_DIR;
+  // Fallback: legacy paths on Mac
   const ocDir = path.join(h.HOME, '.openclaw');
   const cbDir = path.join(h.HOME, '.clawdbot');
   if (profileId === 'default') {
-    const configDir = fs.existsSync(ocDir) ? ocDir : (fs.existsSync(cbDir) ? cbDir : ocDir);
-    const workspace = fs.existsSync(path.join(h.HOME, 'clawd')) ? path.join(h.HOME, 'clawd') : h.ROOT;
+    // Prefer external drive, fall back to legacy Mac paths
+    const configDir = fs.existsSync(stateDir) ? stateDir : (fs.existsSync(ocDir) ? ocDir : (fs.existsSync(cbDir) ? cbDir : stateDir));
+    const workspace = fs.existsSync(path.join(stateDir, 'workspace')) ? path.join(stateDir, 'workspace') :
+      (fs.existsSync(path.join(h.HOME, 'clawd')) ? path.join(h.HOME, 'clawd') : h.ROOT);
     return { configDir, workspace, envPath: path.join(configDir, '.env'), configJson: path.join(configDir, 'clawdbot.json') };
   }
   const suffix = '-' + profileId.replace(/^p-/, '');
-  const configDir = fs.existsSync(ocDir + suffix) ? (ocDir + suffix) : (cbDir + suffix);
-  const workspace = path.join(h.HOME, 'clawd' + suffix);
+  const configDir = fs.existsSync(stateDir + suffix) ? (stateDir + suffix) :
+    (fs.existsSync(ocDir + suffix) ? (ocDir + suffix) : (cbDir + suffix));
+  const workspace = path.join(stateDir, 'workspace' + suffix);
   return { configDir, workspace, envPath: path.join(configDir, '.env'), configJson: path.join(configDir, 'clawdbot.json') };
 }
 
 function profileEnvVars(profileId) {
   const pp = profilePaths(typeof profileId === 'object' ? (profileId.id || profileId) : profileId);
-  return { CLAWDBOT_CONFIG_DIR: pp.configDir, OPENCLAW_CONFIG_DIR: pp.configDir };
+  return {
+    CLAWDBOT_CONFIG_DIR: pp.configDir,
+    OPENCLAW_CONFIG_DIR: pp.configDir,
+    OPENCLAW_STATE_DIR: h.OPENCLAW_STATE_DIR,
+    OPENCLAW_CONFIG_PATH: path.join(pp.configDir, 'openclaw.json')
+  };
 }
 
 // Register with helpers so gatewayExec() always passes the active profile's config dir
@@ -206,16 +217,36 @@ function getVersions() {
 function saveVersionsMeta(data) { h.writeJson(path.join(h.VERSIONS_DIR, 'versions.json'), data); }
 
 // ═══ CONFIG FILE HELPERS ═══
-function openclawConfigPath() { return path.join(h.HOME, '.openclaw', 'openclaw.json'); }
+function openclawConfigPath() {
+  // Prefer external drive state dir, fall back to Mac ~/.openclaw
+  const stateDir = h.OPENCLAW_STATE_DIR;
+  const extPath = path.join(stateDir, 'openclaw.json');
+  if (fs.existsSync(extPath)) return extPath;
+  const macPath = path.join(h.HOME, '.openclaw', 'openclaw.json');
+  if (fs.existsSync(macPath)) return macPath;
+  // Default to external drive (will be created)
+  return extPath;
+}
 function writeOpenclawTelegramToken(token) {
   const p = openclawConfigPath();
-  if (!fs.existsSync(p)) return { ok: false, error: `Config not found: ${p}` };
+  // Create openclaw.json with defaults if it doesn't exist (fresh install)
+  if (!fs.existsSync(p)) {
+    const dir = path.dirname(p);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(p, JSON.stringify({
+      channels: {},
+      plugins: { entries: {} },
+      agents: { defaults: { model: { primary: 'openai/gpt-4o' } } }
+    }, null, 2));
+  }
   const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
   // Set token AND enabled in channels.telegram
   cfg.channels = cfg.channels || {};
   cfg.channels.telegram = cfg.channels.telegram || {};
   cfg.channels.telegram.botToken = token;
   cfg.channels.telegram.enabled = true;
+  cfg.channels.telegram.dmPolicy = 'pairing';          // Require approval per user
+  cfg.channels.telegram.groupPolicy = 'allowlist';      // Don't respond in random groups
   // Also enable in plugins.entries.telegram
   cfg.plugins = cfg.plugins || {};
   cfg.plugins.entries = cfg.plugins.entries || {};

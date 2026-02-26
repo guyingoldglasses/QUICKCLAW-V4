@@ -1,7 +1,9 @@
 #!/bin/bash
 # ═══════════════════════════════════════════
 #  QuickClaw V3 — Stop
-#  Cleanly stops gateway + dashboard
+#  Cleanly stops gateway + dashboard + removes
+#  the ~/.openclaw symlink so unplugging the
+#  drive leaves zero traces on the Mac.
 # ═══════════════════════════════════════════
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,6 +16,20 @@ echo -e "${BOLD}⚡ QuickClaw V3 — Stopping...${NC}"
 echo ""
 
 stopped=0
+
+# ─── Unload the LaunchAgent (stops the gateway service properly) ───
+PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+if launchctl list | grep -q "ai.openclaw.gateway" 2>/dev/null; then
+  echo -e "${CYAN}[info]${NC}  Unloading gateway LaunchAgent..."
+  launchctl bootout "gui/$(id -u)/ai.openclaw.gateway" 2>/dev/null || true
+  stopped=$((stopped + 1))
+  sleep 1
+fi
+# Remove the plist so it doesn't auto-start on login
+if [[ -f "$PLIST" ]]; then
+  rm -f "$PLIST"
+  echo -e "${CYAN}[info]${NC}  Removed LaunchAgent plist"
+fi
 
 # ─── Stop from PID files ───
 for name in dashboard gateway; do
@@ -64,10 +80,23 @@ for port in 5000 18789; do
   done
 done
 
+# ─── Remove ~/.openclaw symlink ───
+# This is the key to portability: when the drive is unplugged,
+# there's no trace of OpenClaw on the Mac.
+if [[ -L "$HOME/.openclaw" ]]; then
+  target=$(readlink "$HOME/.openclaw")
+  rm "$HOME/.openclaw"
+  echo -e "${CYAN}[info]${NC}  Removed ~/.openclaw symlink (was → $target)"
+elif [[ -d "$HOME/.openclaw" ]]; then
+  echo -e "${CYAN}[info]${NC}  Note: ~/.openclaw is a real directory, not a symlink."
+  echo -e "${CYAN}[info]${NC}  Run QuickClaw_Install to migrate it to your external drive."
+fi
+
 if [[ $stopped -eq 0 ]]; then
   echo -e "${GREEN}[  ok]${NC}  Nothing was running."
 else
   echo ""
   echo -e "${GREEN}[  ok]${NC}  Stopped $stopped process(es)."
 fi
+echo -e "${GREEN}[  ok]${NC}  QuickClaw fully stopped. Safe to unplug the drive."
 echo ""
