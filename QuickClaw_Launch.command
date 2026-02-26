@@ -98,16 +98,68 @@ else
   GW_LOG="$LOG_DIR/gateway.log"
   cd "$INSTALL_DIR" 2>/dev/null || cd "$SCRIPT_DIR"
 
+  # Ensure node is in PATH
+  NODE_BIN=$(which node 2>/dev/null)
+  if [[ -n "$NODE_BIN" ]]; then
+    NODE_DIR=$(dirname "$NODE_BIN")
+    export PATH="$NODE_DIR:$PATH"
+  fi
+
+  OPENCLAW_BIN=""
   if [[ -x "$INSTALL_DIR/node_modules/.bin/openclaw" ]]; then
-    nohup "$INSTALL_DIR/node_modules/.bin/openclaw" gateway start --allow-unconfigured >> "$GW_LOG" 2>&1 &
+    OPENCLAW_BIN="$INSTALL_DIR/node_modules/.bin/openclaw"
+  fi
+
+  # Step 1: Install the LaunchAgent (creates the plist)
+  if [[ -n "$OPENCLAW_BIN" ]]; then
+    "$OPENCLAW_BIN" gateway install >> "$GW_LOG" 2>&1 || true
+  else
+    npx openclaw gateway install >> "$GW_LOG" 2>&1 || true
+  fi
+
+  # Step 2: Patch the plist to fix node path + add config dir
+  PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+  if [[ -f "$PLIST" && -n "$NODE_BIN" ]]; then
+    # Replace /usr/bin/env + node with actual node binary path
+    if grep -q '/usr/bin/env' "$PLIST" && grep -q '<string>node</string>' "$PLIST"; then
+      # Use python for reliable XML-safe replacement
+      python3 -c "
+import re, sys
+with open('$PLIST', 'r') as f: t = f.read()
+t = re.sub(r'<string>/usr/bin/env</string>\s*\n\s*<string>node</string>', '<string>$NODE_BIN</string>', t)
+with open('$PLIST', 'w') as f: f.write(t)
+" 2>/dev/null && info "Patched plist: node=$NODE_BIN"
+    fi
+    # Add EnvironmentVariables if missing
+    if ! grep -q 'EnvironmentVariables' "$PLIST"; then
+      ENV_BLOCK="  <key>EnvironmentVariables</key>\n  <dict>\n    <key>PATH</key>\n    <string>$NODE_DIR:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>\n"
+      [[ -n "$OPENCLAW_CONFIG_DIR" ]] && ENV_BLOCK+="    <key>OPENCLAW_CONFIG_DIR</key>\n    <string>$OPENCLAW_CONFIG_DIR</string>\n    <key>CLAWDBOT_CONFIG_DIR</key>\n    <string>$CLAWDBOT_CONFIG_DIR</string>\n"
+      ENV_BLOCK+="  </dict>\n"
+      # Insert before closing </dict></plist>
+      python3 -c "
+import re
+with open('$PLIST', 'r') as f: t = f.read()
+t = re.sub(r'</dict>\s*</plist>', '''$ENV_BLOCK</dict>\n</plist>''', t)
+with open('$PLIST', 'w') as f: f.write(t)
+" 2>/dev/null && info "Added env vars to plist"
+    fi
+  fi
+
+  # Step 3: Start the gateway
+  if [[ -n "$OPENCLAW_BIN" ]]; then
+    nohup "$OPENCLAW_BIN" gateway start --allow-unconfigured >> "$GW_LOG" 2>&1 &
   else
     nohup npx openclaw gateway start --allow-unconfigured >> "$GW_LOG" 2>&1 &
   fi
   GW_PID=$!
   echo "$GW_PID" > "$PID_DIR/gateway.pid"
-  sleep 1
-  if kill -0 "$GW_PID" 2>/dev/null; then
-    ok "Gateway started (PID $GW_PID)"
+  sleep 2
+  
+  # Verify something is actually running on the gateway port
+  if lsof -ti tcp:18789 >/dev/null 2>&1 || lsof -ti tcp:5000 >/dev/null 2>&1; then
+    ok "Gateway started and listening"
+  elif kill -0 "$GW_PID" 2>/dev/null; then
+    ok "Gateway process started (PID $GW_PID) — may take a moment to become ready"
   else
     warn "Gateway may not have started — check $GW_LOG"
     GW_PID="none"

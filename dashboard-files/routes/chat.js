@@ -262,7 +262,7 @@ router.post('/api/chat/save-key', async (req, res) => {
       let gatewayRestarted = false;
       let restartLog = [];
       try {
-        // Graceful stop
+        // Stop everything first
         try { await h.gatewayExec(`${h.gatewayStopCommand()} 2>&1`); } catch {}
         await new Promise(r => setTimeout(r, 1500));
         
@@ -288,18 +288,16 @@ router.post('/api/chat/save-key', async (req, res) => {
         
         await new Promise(r => setTimeout(r, 2000));
         
-        // Fresh start
-        await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1 &`);
-        await new Promise(r => setTimeout(r, 4000));
-        
-        const gw = await h.gatewayState();
-        gatewayRestarted = gw.running;
-        restartLog.push('running:' + gw.running);
+        // Full start: install LaunchAgent + patch plist + start
+        const startResult = await h.gatewayFullStart(path.join(h.LOG_DIR, 'gateway.log'));
+        gatewayRestarted = startResult.ok;
+        restartLog = restartLog.concat(startResult.log);
       } catch (e) { restartLog.push('err:' + e.message.slice(0, 50)); }
       return res.json({
         ok: true, provider: 'telegram',
         writeResults,
         gatewayRestarted,
+        restartLog: restartLog.join(' | '),
         note: gatewayRestarted
           ? 'Token saved and gateway restarted! Open your bot in Telegram and send /start.'
           : 'Token saved to all configs. Start the gateway from the Dashboard, then message your bot.'
@@ -622,16 +620,13 @@ router.post('/api/chat/gateway-restart', async (req, res) => {
     const stillBusy5000 = h.portListeningSync(5000);
     log.push('ports free: 18789=' + !stillBusy18789 + ', 5000=' + !stillBusy5000);
     
-    // 5. Fresh start
+    // 5. Full start: install LaunchAgent + patch plist + start
     try {
-      await h.gatewayExec(`${h.gatewayStartCommand()} >> "${path.join(h.LOG_DIR, 'gateway.log')}" 2>&1 &`);
-      log.push('start command sent');
+      const startResult = await h.gatewayFullStart(path.join(h.LOG_DIR, 'gateway.log'));
+      log.push('fullStart: ' + startResult.log.join(', '));
     } catch (e) { log.push('start failed: ' + e.message.slice(0, 80)); }
     
-    // 6. Wait for it to come up
-    await new Promise(r => setTimeout(r, 4000));
-    
-    // 7. Check state
+    // 6. Check state
     const gw = await h.gatewayState();
     log.push('final state: running=' + gw.running);
     

@@ -126,8 +126,82 @@ let _profileEnvFn = null;
 function setProfileEnvProvider(fn) { _profileEnvFn = fn; }
 async function gatewayExec(cmd, extraOpts = {}) {
   const profileEnv = _profileEnvFn ? _profileEnvFn() : {};
-  const env = { ...profileEnv, ...extraOpts.env };
+  // Ensure node binary dir is in PATH — critical for macOS launchctl
+  const nodeBinDir = path.dirname(process.execPath);
+  const currentPath = process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin';
+  const env = { PATH: `${nodeBinDir}:${currentPath}`, ...profileEnv, ...extraOpts.env };
   return run(cmd, { cwd: INSTALL_DIR, timeout: extraOpts.timeout || 30000, ...extraOpts, env });
+}
+
+/**
+ * Full gateway start sequence for macOS:
+ * 1. Install the LaunchAgent plist
+ * 2. Patch the plist so it can find node + has profile config dir
+ * 3. Start the gateway service
+ */
+async function gatewayFullStart(logFile) {
+  const log = [];
+  const logArg = logFile ? ` >> "${logFile}" 2>&1` : ' 2>&1';
+  const nodeBin = process.execPath;
+  const nodeBinDir = path.dirname(nodeBin);
+
+  // Step 1: Install the LaunchAgent plist
+  try {
+    const inst = await gatewayExec(`${cliBin()} gateway install${logArg}`);
+    log.push('install: ' + (inst.ok ? 'ok' : (inst.error || 'failed')).slice(0, 80));
+  } catch (e) { log.push('install err: ' + e.message.slice(0, 60)); }
+
+  // Step 2: Patch the plist to fix node path + add config dir
+  const plistPath = path.join(HOME, 'Library', 'LaunchAgents', 'ai.openclaw.gateway.plist');
+  try {
+    if (fs.existsSync(plistPath)) {
+      let plist = fs.readFileSync(plistPath, 'utf-8');
+      let patched = false;
+      const profileEnv = _profileEnvFn ? _profileEnvFn() : {};
+
+      // Replace "/usr/bin/env" + "node" with actual node binary
+      if (plist.includes('/usr/bin/env') && plist.includes('<string>node</string>')) {
+        plist = plist.replace(/<string>\/usr\/bin\/env<\/string>[\s\S]*?<string>node<\/string>/,
+          '<string>' + nodeBin + '</string>');
+        patched = true;
+      }
+
+      // Add EnvironmentVariables if missing
+      if (!plist.includes('EnvironmentVariables') && plist.includes('</dict>')) {
+        let envBlock = '  <key>EnvironmentVariables</key>\n  <dict>\n';
+        envBlock += '    <key>PATH</key>\n    <string>' + nodeBinDir + ':/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>\n';
+        if (profileEnv.OPENCLAW_CONFIG_DIR) {
+          envBlock += '    <key>OPENCLAW_CONFIG_DIR</key>\n    <string>' + profileEnv.OPENCLAW_CONFIG_DIR + '</string>\n';
+          envBlock += '    <key>CLAWDBOT_CONFIG_DIR</key>\n    <string>' + profileEnv.CLAWDBOT_CONFIG_DIR + '</string>\n';
+        }
+        envBlock += '  </dict>\n';
+        plist = plist.replace(/<\/dict>\s*<\/plist>/, envBlock + '</dict>\n</plist>');
+        patched = true;
+      }
+
+      if (patched) {
+        fs.writeFileSync(plistPath, plist);
+        log.push('plist patched: node=' + nodeBin);
+      } else {
+        log.push('plist ok');
+      }
+    } else {
+      log.push('no plist at ' + plistPath);
+    }
+  } catch (e) { log.push('plist err: ' + e.message.slice(0, 60)); }
+
+  // Step 3: Start the gateway
+  try {
+    const start = await gatewayExec(`${cliBin()} gateway start --allow-unconfigured${logArg}`);
+    log.push('start: ' + (start.ok ? 'ok' : (start.error || 'failed')).slice(0, 80));
+  } catch (e) { log.push('start err: ' + e.message.slice(0, 60)); }
+
+  // Step 4: Wait and check
+  await new Promise(r => setTimeout(r, 3000));
+  const gw = await gatewayState();
+  log.push('running: ' + gw.running);
+
+  return { ok: gw.running, gateway: gw, log };
 }
 
 module.exports = {
@@ -137,5 +211,5 @@ module.exports = {
   run, runSync, portListeningSync, tailFile, readJson, writeJson, readEnv, writeEnv,
   maskKey, cleanCli, cliBin, gatewayStartCommand, gatewayStopCommand,
   ensureWithinRoot, b64url, makePkcePair, gatewayState,
-  setProfileEnvProvider, gatewayExec
+  setProfileEnvProvider, gatewayExec, gatewayFullStart
 };
